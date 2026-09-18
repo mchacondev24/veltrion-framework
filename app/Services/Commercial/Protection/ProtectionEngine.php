@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\Commercial\Protection;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  use Veltrion\Services\Commercial\Protection\Contracts\ProtectionProviderInterface; class ProtectionEngine { private ProtectionProviderInterface $provider; public function __construct(?ProtectionProviderInterface $provider = null) { $this->provider = $provider ?? new NativeProtectionProvider(); } public function getProvider(): ProtectionProviderInterface { return $this->provider; } public function setProvider(ProtectionProviderInterface $provider): void { $this->provider = $provider; } public function protectBuild(string $sourceDir, string $targetDir, array $options = []): array { if (!is_dir($sourceDir)) { return [ 'success' => false, 'error' => "Source directory {$sourceDir} does not exist." ]; } return $this->provider->protectDirectory($sourceDir, $targetDir, $options); } } 

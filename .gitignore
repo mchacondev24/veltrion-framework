@@ -1,0 +1,33 @@
+# Configuration & Secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.token
+*.secret
+
+# Vendor and Dependencies
+vendor/
+node_modules/
+
+# Storage & Temporary Files
+storage/builds/*
+!storage/builds/.gitkeep
+storage/reports/*
+!storage/reports/.gitkeep
+storage/*.sqlite
+storage/*.sqlite-journal
+*.log
+
+# Python Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# IDE & OS Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

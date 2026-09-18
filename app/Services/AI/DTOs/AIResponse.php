@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\AI\DTOs;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  class AIResponse { private string $content; private string $provider; private string $model; private bool $success; private ?string $errorMessage; private array $meta; public function __construct( string $content, string $provider, string $model, bool $success = true, ?string $errorMessage = null, array $meta = [] ) { $this->content = $content; $this->provider = $provider; $this->model = $model; $this->success = $success; $this->errorMessage = $errorMessage; $this->meta = $meta; } public function getContent(): string { return $this->content; } public function getProvider(): string { return $this->provider; } public function getModel(): string { return $this->model; } public function isSuccess(): bool { return $this->success; } public function getErrorMessage(): ?string { return $this->errorMessage; } public function getMeta(): array { return $this->meta; } public function toArray(): array { return [ 'content' => $this->content, 'provider' => $this->provider, 'model' => $this->model, 'success' => $this->success, 'error' => $this->errorMessage, 'meta' => $this->meta ]; } } 

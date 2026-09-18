@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\AI\FeatureEngine\Enums;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  class FeatureStatus { public const DRAFT = 'DRAFT'; public const PLANNED = 'PLANNED'; public const APPROVED = 'APPROVED'; public const IN_PROGRESS = 'IN_PROGRESS'; public const IMPLEMENTED = 'IMPLEMENTED'; public const TESTING = 'TESTING'; public const SECURITY_REVIEW = 'SECURITY_REVIEW'; public const E2E_REVIEW = 'E2E_REVIEW'; public const DOCUMENTING = 'DOCUMENTING'; public const READY_FOR_RELEASE = 'READY_FOR_RELEASE'; public const RELEASED = 'RELEASED'; public const BLOCKED = 'BLOCKED'; public const CANCELLED = 'CANCELLED'; public static function getAll(): array { return [ self::DRAFT, self::PLANNED, self::APPROVED, self::IN_PROGRESS, self::IMPLEMENTED, self::TESTING, self::SECURITY_REVIEW, self::E2E_REVIEW, self::DOCUMENTING, self::READY_FOR_RELEASE, self::RELEASED, self::BLOCKED, self::CANCELLED ]; } } 

@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\CICD\Pipeline;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  class PipelineStage { public const CHECKOUT = 'CHECKOUT'; public const VALIDATE = 'VALIDATE'; public const DEPENDENCIES = 'DEPENDENCIES'; public const BUILD = 'BUILD'; public const LINT = 'LINT'; public const STATIC_ANALYSIS = 'STATIC_ANALYSIS'; public const UNIT_TEST = 'UNIT_TEST'; public const INTEGRATION_TEST = 'INTEGRATION_TEST'; public const SECURITY = 'SECURITY'; public const E2E = 'E2E'; public const PERFORMANCE = 'PERFORMANCE'; public const TRACEABILITY = 'TRACEABILITY'; public const DOCUMENTATION = 'DOCUMENTATION'; public const QUALITY_GATE = 'QUALITY_GATE'; public const PACKAGE = 'PACKAGE'; public const VERIFY = 'VERIFY'; public const RELEASE = 'RELEASE'; public function __construct( public string $name, public string $status = 'PENDING', public int $durationMs = 0, public string $output = '', public array $details = [] ) {} public function toArray(): array { return [ 'name' => $this->name, 'status' => $this->status, 'duration_ms' => $this->durationMs, 'output' => $this->output, 'details' => $this->details ]; } } 

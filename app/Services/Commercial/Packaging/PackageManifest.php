@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\Commercial\Packaging;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  class PackageManifest { public function __construct( public string $product, public string $version, public string $buildId, public string $commit, public string $framework = 'Veltrion Framework PHP', public string $phpVersion = PHP_VERSION, public bool $licenseRequired = true, public bool $protectionEnabled = true, public array $features = [], public ?string $customer = null, public string $timestamp = '' ) { if (empty($this->timestamp)) { $this->timestamp = date('Y-m-d H:i:s'); } } public function toArray(): array { return [ 'product' => $this->product, 'version' => $this->version, 'build' => $this->buildId, 'commit' => $this->commit, 'framework' => $this->framework, 'php' => $this->phpVersion, 'licenseRequired' => $this->licenseRequired, 'protectionEnabled' => $this->protectionEnabled, 'features' => $this->features, 'customer' => $this->customer, 'timestamp' => $this->timestamp ]; } } 

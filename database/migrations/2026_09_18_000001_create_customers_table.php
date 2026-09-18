@@ -1,0 +1,4 @@
+<?php
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+ return new class { public function up(PDO $pdo): void { $pdo->exec(" CREATE TABLE IF NOT EXISTS customers ( id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(255) NOT NULL, email VARCHAR(255) NOT NULL UNIQUE, phone VARCHAR(50) DEFAULT '', status VARCHAR(20) DEFAULT 'ACTIVE', created_at DATETIME DEFAULT CURRENT_TIMESTAMP ) "); } public function down(PDO $pdo): void { $pdo->exec("DROP TABLE IF EXISTS customers"); } }; 

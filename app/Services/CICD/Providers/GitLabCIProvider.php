@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\CICD\Providers;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  use Veltrion\Services\CICD\Providers\Contracts\CIProviderInterface; class GitLabCIProvider implements CIProviderInterface { public function getName(): string { return 'GitLab CI'; } public function getTargetFilePath(): string { return '.gitlab-ci.yml'; } public function generateConfig(): string { return <<<'YAML' image: php:8.2-cli stages: - validate - test - quality_gates - release cache: paths: - vendor/ before_script: - apt-get update -y && apt-get install -y git unzip libzip-dev - docker-php-ext-install zip pdo pdo_mysql - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer - composer install --prefer-dist --no-progress lint: stage: validate script: - php -l bootstrap/app.php unit_tests: stage: test script: - php cli test quality_gates: stage: quality_gates script: - php cli ci:run --profile standard release_check: stage: release script: - php cli release:check YAML; } } 

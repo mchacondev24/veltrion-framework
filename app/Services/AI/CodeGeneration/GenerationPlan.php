@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\AI\CodeGeneration;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  class GenerationPlan { private string $request; private array $steps; private array $plannedFiles; private bool $usesRadGenerator; public function __construct(string $request, array $steps = [], array $plannedFiles = [], bool $usesRadGenerator = false) { $this->request = $request; $this->steps = $steps; $this->plannedFiles = $plannedFiles; $this->usesRadGenerator = $usesRadGenerator; } public function getRequest(): string { return $this->request; } public function getSteps(): array { return $this->steps; } public function getPlannedFiles(): array { return $this->plannedFiles; } public function usesRadGenerator(): bool { return $this->usesRadGenerator; } public function toArray(): array { return [ 'request' => $this->request, 'uses_rad_generator' => $this->usesRadGenerator, 'steps' => $this->steps, 'planned_files' => $this->plannedFiles ]; } } 

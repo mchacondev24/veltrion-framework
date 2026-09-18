@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\CICD\Providers;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  use Veltrion\Services\CICD\Providers\Contracts\CIProviderInterface; class GitHubActionsProvider implements CIProviderInterface { public function getName(): string { return 'GitHub Actions'; } public function getTargetFilePath(): string { return '.github/workflows/ci.yml'; } public function generateConfig(): string { return <<<'YAML' name: Veltrion Framework CI/CD Pipeline on: push: branches: [ master, main, develop ] pull_request: branches: [ master, main ] jobs: build-and-test: runs-on: ubuntu-latest steps: - name: Checkout Code uses: actions/checkout@v4 - name: Setup PHP Environment uses: shivammathur/setup-php@v2 with: php-version: '8.2' extensions: mbstring, pdo, pdo_sqlite, json, zip - name: Install Dependencies run: composer install --prefer-dist --no-progress - name: PHP Lint Validation run: php -l bootstrap/app.php - name: Run Test Suite run: php cli test - name: Run CI Pipeline & Quality Gates run: php cli ci:run --profile standard - name: Verify Release Readiness run: php cli release:check YAML; } } 

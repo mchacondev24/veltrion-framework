@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\AI\CodeGeneration;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  class ChangeAnalyzer { public function analyzeRequest(string $userRequest): array { $words = explode(' ', strtolower($userRequest)); $isCrud = false; $entityName = ''; foreach ($words as $i => $word) { if (in_array($word, ['crud', 'modulo', 'módulo', 'crear', 'entidad'])) { $isCrud = true; if (isset($words[$i + 1]) && !in_array($words[$i + 1], ['de', 'para', 'un', 'una'])) { $entityName = ucfirst($words[$i + 1]); } elseif (isset($words[$i + 2])) { $entityName = ucfirst($words[$i + 2]); } } } if (empty($entityName)) { $cleanReq = preg_replace('/[^a-zA-Z0-9_\s]/', '', $userRequest); $tokens = array_values(array_filter(explode(' ', $cleanReq))); $last = end($tokens); if ($last && strlen($last) > 2) { $entityName = ucfirst($last); } } return [ 'is_crud' => $isCrud, 'entity_name' => $entityName ?: 'CustomEntity', 'suggests_rad' => $isCrud && !empty($entityName) ]; } } 

@@ -1,0 +1,27 @@
+{
+  "name": "veltrion/framework",
+  "description": "Ecosistema PHP Empresarial con Clean Architecture, IA Local (Ollama) y Agentes Autónomos",
+  "type": "project",
+  "license": "Apache-2.0",
+  "authors": [
+    {
+      "name": "Maxwell Chacón",
+      "email": "ing.chacon.maxwell@gmail.com",
+      "role": "Creador y Arquitecto Principal"
+    }
+  ],
+  "autoload": {
+    "psr-4": {
+      "Veltrion\\": "app/",
+      "Veltrion\\Bootstrap\\": "bootstrap/"
+    }
+  },
+  "require": {
+    "php": ">=8.1"
+  },
+  "scripts": {
+    "post-autoload-dump": [
+      "@php cli doctor"
+    ]
+  }
+}

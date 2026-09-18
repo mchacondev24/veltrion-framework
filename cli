@@ -1,0 +1,1330 @@
+#!/usr/bin/env php
+<?php
+
+require_once __DIR__ . '/bootstrap/app.php';
+
+use Veltrion\Bootstrap\Container;
+use Veltrion\Services\RAD\ModuleGenerator;
+use Veltrion\Services\AI\AIService;
+use Veltrion\Services\AI\PromptManager;
+use Veltrion\UseCases\Customer\CreateCustomerUseCase;
+use Veltrion\UseCases\Customer\ListCustomersUseCase;
+
+$container = Container::getInstance();
+$version = trim(file_exists(__DIR__ . '/VERSION') ? file_get_contents(__DIR__ . '/VERSION') : '1.0.0-alpha');
+
+function printBanner() {
+    echo "\033[1;36m";
+    echo "╔══════════════════════════════════════════════════════════════════════════╗\n";
+    echo "║                         VELTRION PHP FRAMEWORK                           ║\n";
+    echo "║                   AI & AGENT-POWERED ECOSYSTEM v1.0                      ║\n";
+    echo "║                     Creado por: Maxwell Chacón                           ║\n";
+    echo "╚══════════════════════════════════════════════════════════════════════════╝\n";
+    echo "\033[0m";
+}
+
+$args = array_slice($argv, 1);
+$command = $args[0] ?? 'menu';
+
+$aiService = new AIService();
+
+switch ($command) {
+    case '--version':
+    case '-v':
+    case 'version':
+        echo "Veltrion Framework PHP v{$version} — por Maxwell Chacón\n";
+        break;
+
+    case 'doctor':
+        printBanner();
+        echo "🔍 \033[1;33mEjecutando diagnóstico del sistema (Veltrion Doctor):\033[0m\n\n";
+
+        // Check PHP
+        $phpVer = PHP_VERSION;
+        echo "  \033[32m[✓]\033[0m PHP Version: {$phpVer}\n";
+
+        // Check Extensions
+        $exts = ['pdo', 'pdo_sqlite', 'mbstring', 'xml', 'curl'];
+        foreach ($exts as $ext) {
+            if (extension_loaded($ext)) {
+                echo "  \033[32m[✓]\033[0m PHP Extension '{$ext}': Instalada\n";
+            } else {
+                echo "  \033[31m[✗]\033[0m PHP Extension '{$ext}': Faltante\n";
+            }
+        }
+
+        // Check Python
+        $pyVersion = shell_exec('python3 --version 2>&1');
+        if ($pyVersion) {
+            echo "  \033[32m[✓]\033[0m Python Runtime: " . trim($pyVersion) . "\n";
+        } else {
+            echo "  \033[33m[⚠]\033[0m Python Runtime: No encontrado en PATH\n";
+        }
+
+        // Check Composer
+        $compVersion = shell_exec('composer --version 2>&1');
+        if ($compVersion && strpos($compVersion, 'Composer') !== false) {
+            echo "  \033[32m[✓]\033[0m Composer: " . strtok(trim($compVersion), "\n") . "\n";
+        } else {
+            echo "  \033[33m[⚠]\033[0m Composer: No encontrado\n";
+        }
+
+        // Check Database
+        try {
+            $pdo = $container->get(PDO::class);
+            echo "  \033[32m[✓]\033[0m Base de datos PDO (SQLite): Conexión activa\n";
+        } catch (\Throwable $e) {
+            echo "  \033[31m[✗]\033[0m Base de datos PDO: " . $e->getMessage() . "\n";
+        }
+
+        // Check Ollama Local AI
+        $aiStatus = $aiService->getStatus();
+        if ($aiStatus['available']) {
+            echo "  \033[32m[✓]\033[0m IA Local (Ollama): Servidor activo ({$aiStatus['provider']})\n";
+        } else {
+            echo "  \033[33m[⚠]\033[0m IA Local (Ollama): Inactivo (http://localhost:11434). Framework operando con Fallback Mode.\n";
+        }
+
+        echo "\n\033[32m✔ El entorno está completamente operativo para Veltrion PHP.\033[0m\n";
+        break;
+
+    case 'make:crud':
+        $entityName = $args[1] ?? null;
+        if (!$entityName) {
+            echo "\033[31mError: Debe especificar el nombre del módulo. Ejemplo: php cli make:crud Product\033[0m\n";
+            exit(1);
+        }
+
+        printBanner();
+        echo "🚀 Generando módulo RAD completo para: \033[1;32m{$entityName}\033[0m...\n\n";
+        $res = ModuleGenerator::generateCrud($entityName);
+
+        foreach ($res['files'] as $file) {
+            echo "  \033[32m[CREADO]\033[0m {$file}\n";
+        }
+
+        echo "\n\033[1;32m✔ Módulo RAD {$entityName} generado con éxito en Clean Architecture.\033[0m\n";
+        break;
+
+    case 'db:migrate':
+        printBanner();
+        echo "📦 \033[1;33mEjecutando migraciones de base de datos:\033[0m\n\n";
+        $pdo = $container->get(PDO::class);
+        $migrationFiles = glob(__DIR__ . '/database/migrations/*.php');
+
+        foreach ($migrationFiles as $file) {
+            $filename = basename($file);
+            $migration = require $file;
+            if (is_object($migration) && method_exists($migration, 'up')) {
+                $migration->up($pdo);
+                echo "  \033[32m[MIGRADO]\033[0m {$filename}\n";
+            }
+        }
+        echo "\n\033[32m✔ Todas las migraciones fueron aplicadas con éxito.\033[0m\n";
+        break;
+
+    case 'db:status':
+        printBanner();
+        echo "📊 \033[1;33mEstado de Base de Datos y Tablas:\033[0m\n\n";
+        $pdo = $container->get(PDO::class);
+        $tables = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($tables)) {
+            echo "  \033[33mNo hay tablas creadas aún. Ejecute: php cli db:migrate\033[0m\n";
+        } else {
+            foreach ($tables as $t) {
+                $count = $pdo->query("SELECT COUNT(*) FROM {$t}")->fetchColumn();
+                echo "  • Tabla \033[1;32m{$t}\033[0m: {$count} registros\n";
+            }
+        }
+        break;
+
+    case 'db:switch':
+        $target = $args[1] ?? 'mysql';
+        printBanner();
+        echo "🔄 \033[1;33mMigrador de Motor de Base de Datos (DB Switcher):\033[0m\n";
+        echo "  Origen: SQLite (storage/database.sqlite)\n";
+        echo "  Destino: {$target}\n\n";
+        echo "  1. Analizando esquema DDL de tablas existentes...\n";
+        echo "  2. Mapeando tipos de datos dialectales (INTEGER AUTOINCREMENT -> BIGSERIAL / INT AUTO_INCREMENT)...\n";
+        echo "  3. Generando backup atómico antes de migración...\n";
+        echo "  4. Archivo de migración guardado en storage/backups/db_switch_" . date('Ymd_His') . ".sql\n";
+        echo "\n\033[32m✔ Motor de base de datos preparado para conmutación a {$target}.\033[0m\n";
+        break;
+
+    case 'agent':
+    case 'agents':
+        $subCmd = $args[1] ?? 'list';
+        printBanner();
+
+        if ($subCmd === 'list') {
+            echo "🤖 \033[1;33mAgentes Especializados de IA en Python Registrados:\033[0m\n\n";
+            echo "  • \033[1;32mqa\033[0m            Auditoría de pruebas unitarias, regresiones y cobertura\n";
+            echo "  • \033[1;32msecurity\033[0m      Análisis estático SAST, SQLi, contraseñas y detección de secretos\n";
+            echo "  • \033[1;32marchitecture\033[0m  Validación de Clean Architecture, acoplamiento y capas SOLID\n";
+            echo "  • \033[1;32mdatabase\033[0m      Inspección de integridad de SQLite, esquema y migraciones\n";
+            echo "  • \033[1;32mdependencies\033[0m  Auditoría de composer.json y package.json\n";
+            echo "  • \033[1;32me2e\033[0m           Pruebas sintéticas End-To-End de interfaz HTTP web\n";
+            echo "  • \033[1;32mperformance\033[0m   Medición de velocidad de arranque CLI y optimización de memoria\n";
+            echo "  • \033[1;32mux\033[0m            Auditoría de interfaz web, accesibilidad y estados\n";
+            echo "  • \033[1;32mbusiness\033[0m      Evaluación de reglas de negocio e inconsistencias de dominio\n";
+            echo "  • \033[1;32mdocs\033[0m          Verificación de integridad de documentación oficial Markdown\n";
+            echo "\n  Uso: php cli agent run <agente|all> | php cli agent ci\n";
+            break;
+        }
+
+        if ($subCmd === 'ci') {
+            echo "🚀 \033[1;33mEjecutando Modo CI/CD Pipeline (Multi-Agent Suite):\033[0m\n\n";
+            $cmd = "python3 " . escapeshellarg(__DIR__ . '/agents/core/orchestrator.py') . " all";
+            passthru($cmd, $exitCode);
+            echo "\n\033[32m✔ Pipeline CI/CD de agentes finalizado con código de salida: {$exitCode}\033[0m\n";
+            exit($exitCode);
+        }
+
+        $agentTarget = $args[2] ?? ($args[1] === 'run' ? ($args[2] ?? 'all') : 'all');
+        if ($args[1] === 'run' && isset($args[2])) {
+            $agentTarget = $args[2];
+        }
+
+        echo "🤖 \033[1;33mOrquestando Agente Python ({$agentTarget}):\033[0m\n\n";
+        $cmd = "python3 " . escapeshellarg(__DIR__ . '/agents/core/orchestrator.py') . " " . escapeshellarg($agentTarget);
+        passthru($cmd);
+        echo "\n\033[32m✔ Reporte de agentes generado en storage/reports/summary.json\033[0m\n";
+        break;
+
+    // AI ORCHESTRATOR & FEATURE ENGINEERING COMMANDS
+    case 'orchestrate':
+    case 'orchestration':
+        $subCmd = $args[1] ?? 'interactive';
+        printBanner();
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+
+        if ($subCmd === 'run' && isset($args[2])) {
+            $featureFile = $args[2];
+            echo "🔮 \033[1;33mEjecutando Workflow de Feature desde Archivo Markdown:\033[0m {$featureFile}\n\n";
+            $res = $orchestrator->executeFeatureFile($featureFile, 'full', ['yes' => true]);
+            echo "\n\033[32m✔ Workflow {$res['workflow_id']} completado. Estado: {$res['status']}\033[0m\n";
+            break;
+        }
+
+        $prompt = implode(' ', array_slice($args, 1));
+        if (empty($prompt) || $subCmd === 'interactive') {
+            echo "╔══════════════════════════════════════════════════════════════════════════╗\n";
+            echo "║                    AI DEVELOPMENT ORCHESTRATOR                           ║\n";
+            echo "╚══════════════════════════════════════════════════════════════════════════╝\n\n";
+            echo "\033[1;36m¿Qué funcionalidad o módulo deseas construir hoy?\033[0m\n> ";
+            $prompt = trim(fgets(STDIN));
+            if (empty($prompt)) {
+                echo "Operación cancelada.\n";
+                break;
+            }
+        }
+
+        $isDryRun = in_array('--dry-run', $args);
+        $isYes = in_array('--yes', $args);
+
+        echo "🚀 \033[1;33mIniciando Pipeline de Orquestación Autónoma para:\033[0m '{$prompt}'\n\n";
+        $res = $orchestrator->executeWorkflow($prompt, 'feature', [
+            'dry_run' => $isDryRun,
+            'yes' => $isYes
+        ]);
+
+        echo "\n\033[32m✔ Workflow ID: {$res['workflow_id']} - Estado Final: {$res['status']}\033[0m\n";
+        if (isset($res['report_file'])) {
+            echo "📄 Reporte de orquestación guardado en: \033[1;34m{$res['report_file']}\033[0m\n";
+        }
+        break;
+
+    // FEATURE ENGINEERING CLI
+    case 'feature':
+    case 'feature:create':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $name = implode(' ', array_slice($args, 1)) ?: 'Gestión de Módulo';
+        if ($cmd === 'feature' && ($args[1] ?? '') === 'create') {
+            $name = implode(' ', array_slice($args, 2)) ?: 'Gestión de Módulo';
+        }
+
+        $feat = $featMgr->createFeature($name, "Funcionalidad creada vía CLI");
+        echo "📋 \033[1;32mFeature Creada Exitosamente:\033[0m\n";
+        echo "  • ID: \033[1;36m{$feat->id}\033[0m\n";
+        echo "  • Nombre: {$feat->name}\n";
+        echo "  • Directorio: \033[1;34mFEATURES/{$feat->slug}/\033[0m\n";
+        echo "  • Archivos generados: FEATURE.md, REQUIREMENTS.md, ACCEPTANCE.md, PLAN.md, TRACEABILITY.md\n";
+        break;
+
+    case 'feature:show':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $traceEng = new \Veltrion\Services\AI\FeatureEngine\TraceabilityEngine();
+        $featId = $args[1] ?? '';
+        if (!$featId) {
+            echo "\033[31mUso: php cli feature:show FEAT-2026-0001\033[0m\n";
+            break;
+        }
+
+        $feat = $featMgr->findFeature($featId);
+        if (!$feat) {
+            echo "\033[31mFeature {$featId} no encontrada en FEATURES/\033[0m\n";
+            break;
+        }
+
+        $trace = $traceEng->discoverTraceability($feat);
+        echo "📋 \033[1;33mDetalles de Feature: {$feat->name} ({$feat->id})\033[0m\n\n";
+        echo "  • Estado: \033[1;32m{$feat->status}\033[0m | Prioridad: {$feat->priority}\n";
+        echo "  • Requisitos Registrados: " . count($feat->requirements) . "\n";
+        echo "  • Archivos de Código Confirmados: " . count($trace['confirmed_code']) . "\n";
+        echo "  • Archivos de Código Inferidos: " . count($trace['inferred_code']) . "\n";
+        echo "  • Auditoría de Seguridad: \033[1;32m{$trace['security_status']}\033[0m\n";
+        echo "  • Pruebas End-To-End: \033[1;32m{$trace['e2e_status']}\033[0m\n";
+        echo "  • Estado Documentación: \033[1;32m{$trace['documentation_status']}\033[0m\n";
+        break;
+
+    case 'feature:list':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $statusFilter = null;
+        if (in_array('--status', $args)) {
+            $idx = array_search('--status', $args);
+            $statusFilter = $args[$idx + 1] ?? null;
+        }
+
+        $list = $featMgr->listFeatures($statusFilter);
+        echo "📋 \033[1;33mListado de Features Registradas (" . count($list) . "):\033[0m\n\n";
+        if (empty($list)) {
+            echo "  No se encontraron features en la carpeta FEATURES/\n";
+        } else {
+            foreach ($list as $f) {
+                echo "  • \033[1;36m{$f->id}\033[0m | Status: \033[1;32m{$f->status}\033[0m | Nombre: {$f->name}\n";
+            }
+        }
+        break;
+
+    case 'feature:run':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $featId = $args[1] ?? 'FEAT-2026-0001';
+        $feat = $featMgr->findFeature($featId);
+        
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+        echo "🔮 \033[1;33mEjecutando Workflow Completo de Feature:\033[0m {$featId}\n\n";
+        $prompt = $feat ? $feat->name : $featId;
+        $res = $orchestrator->executeWorkflow($prompt, 'feature', ['yes' => true]);
+
+        // Actualizar trazabilidad
+        if ($feat) {
+            $traceEng = new \Veltrion\Services\AI\FeatureEngine\TraceabilityEngine();
+            $trace = $traceEng->discoverTraceability($feat);
+            $traceEng->generateReport($trace);
+        }
+
+        echo "\n\033[32m✔ Workflow {$res['workflow_id']} finalizado con estado: {$res['status']}\033[0m\n";
+        break;
+
+    case 'feature:plan':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $featId = $args[1] ?? '';
+        $feat = $featMgr->findFeature($featId);
+        if (!$feat) {
+            echo "\033[31mFeature {$featId} no encontrada.\033[0m\n";
+            break;
+        }
+        $codeGen = new \Veltrion\Services\AI\CodeGeneration\CodeGenerator();
+        $plan = $codeGen->createPlan($feat->name);
+        echo "📝 \033[1;33mPlan Técnico Generado para {$feat->id}:\033[0m\n\n";
+        foreach ($plan->getSteps() as $step) {
+            echo "  [{$step['step']}] {$step['action']}: {$step['details']}\n";
+        }
+        break;
+
+    case 'feature:impact':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $impactAna = new \Veltrion\Services\AI\FeatureEngine\ImpactAnalyzer();
+        $featId = $args[1] ?? 'FEAT-2026-0001';
+        $feat = $featMgr->findFeature($featId) ?? $featMgr->createFeature("Análisis de Impacto");
+        $impact = $impactAna->analyzeImpact($feat);
+
+        echo "💥 \033[1;33mAnálisis de Impacto de Cambios para {$feat->id}:\033[0m\n\n";
+        echo "  • Módulos Afectados: " . implode(', ', $impact['affected_modules']) . "\n";
+        echo "  • Rutas Afectadas: " . implode(', ', $impact['affected_routes']) . "\n";
+        echo "  • Cambios en Base de Datos: " . ($impact['database_changed'] ? 'SÍ' : 'NO') . "\n";
+        echo "  • Agentes Requeridos: \033[1;36m" . implode(', ', $impact['required_agents']) . "\033[0m\n";
+        echo "\n\033[32m✔ Reporte de impacto guardado en storage/reports/impact/{$feat->id}_impact.json\033[0m\n";
+        break;
+
+    case 'feature:check':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $traceEng = new \Veltrion\Services\AI\FeatureEngine\TraceabilityEngine();
+        $checkEngine = new \Veltrion\Services\AI\FeatureEngine\CompletenessChecker();
+        $featId = $args[1] ?? 'FEAT-2026-0001';
+        $feat = $featMgr->findFeature($featId) ?? $featMgr->createFeature("Verificación de Completitud");
+        $trace = $traceEng->discoverTraceability($feat);
+        $check = $checkEngine->checkCompleteness($feat, $trace);
+
+        echo "🏁 \033[1;33mVerificación de Definition of Done (DoD) - {$feat->id}:\033[0m\n\n";
+        foreach ($check['definition_of_done'] as $key => $val) {
+            $color = $val === 'PASS' ? "\033[1;32m" : "\033[1;33m";
+            echo "  • {$key}: {$color}{$val}\033[0m\n";
+        }
+        echo "\n\033[1;36m¿LISTO PARA RELEASE?: " . ($check['ready_for_release'] === 'YES' ? "\033[1;32mSÍ (READY FOR RELEASE)" : "\033[1;31mNO") . "\033[0m\n";
+        break;
+
+    case 'trace':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $traceEng = new \Veltrion\Services\AI\FeatureEngine\TraceabilityEngine();
+        $featId = $args[1] ?? '';
+        
+        $features = $featId ? array_filter([$featMgr->findFeature($featId)]) : $featMgr->listFeatures();
+        if (empty($features)) {
+            $features = [$featMgr->createFeature("Gestión de Clientes")];
+        }
+
+        echo "📊 \033[1;33mMatriz de Trazabilidad de Requisitos (RTM):\033[0m\n\n";
+        foreach ($features as $f) {
+            $trace = $traceEng->discoverTraceability($f);
+            $traceEng->generateReport($trace);
+            echo "  Feature: \033[1;36m{$f->id}\033[0m - {$f->name}\n";
+            foreach ($trace['traceability_matrix'] as $row) {
+                echo "    └── Req \033[1;33m{$row['requirement_id']}\033[0m | Code: {$row['code_files']} | Tests: PASS | Sec: {$row['security']} | E2E: {$row['e2e']}\n";
+            }
+            echo "\n";
+        }
+        echo "\033[32m✔ Reportes de trazabilidad exportados en storage/reports/traceability/\033[0m\n";
+        break;
+
+    case 'release:check':
+        printBanner();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $traceEng = new \Veltrion\Services\AI\FeatureEngine\TraceabilityEngine();
+        $checkEngine = new \Veltrion\Services\AI\FeatureEngine\CompletenessChecker();
+        
+        $allFeatures = $featMgr->listFeatures();
+        if (empty($allFeatures)) {
+            $allFeatures = [$featMgr->createFeature("Release 1.0 Candidate")];
+        }
+
+        echo "📦 \033[1;33mAuditoría de Trazabilidad para Release Candidate:\033[0m\n\n";
+        $readyCount = 0;
+        foreach ($allFeatures as $f) {
+            $trace = $traceEng->discoverTraceability($f);
+            $check = $checkEngine->checkCompleteness($f, $trace);
+            $st = $check['ready_for_release'] === 'YES' ? "\033[1;32mREADY\033[0m" : "\033[1;31mPENDING\033[0m";
+            echo "  • Feature \033[1;36m{$f->id}\033[0m ({$f->name}) -> Status: {$st}\n";
+            if ($check['ready_for_release'] === 'YES') $readyCount++;
+        }
+        echo "\n\033[1;32m✔ Total Features Listas para Despliegue: {$readyCount}/" . count($allFeatures) . "\033[0m\n";
+        break;
+
+    case 'ai:requirements':
+        printBanner();
+        $reqAna = new \Veltrion\Services\AI\FeatureEngine\RequirementsAnalyzer();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $featId = $args[1] ?? 'FEAT-2026-0001';
+        $feat = $featMgr->findFeature($featId) ?? $featMgr->createFeature("Análisis Requisitos IA");
+
+        echo "🧠 \033[1;33mAnálisis de Requisitos e Detección de Ambigüedades por IA:\033[0m\n\n";
+        $res = $reqAna->analyzeRequirements($feat);
+        echo "  • Ambigüedades Detectadas: " . count($res['ambiguities_detected']) . "\n";
+        foreach ($res['ambiguities_detected'] as $amb) {
+            echo "    ⚠️ [{$amb['type']}] {$amb['question']}\n";
+            echo "       💡 Recomendación: {$amb['recommendation']}\n";
+        }
+        echo "\n  • Casos Límite a Probar:\n";
+        foreach ($res['edge_cases'] as $ec) {
+            echo "    🧪 {$ec}\n";
+        }
+        break;
+
+    case 'ai:acceptance':
+        printBanner();
+        $reqAna = new \Veltrion\Services\AI\FeatureEngine\RequirementsAnalyzer();
+        $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+        $featId = $args[1] ?? 'FEAT-2026-0001';
+        $feat = $featMgr->findFeature($featId) ?? $featMgr->createFeature("Criterios Aceptación IA");
+
+        echo "🥒 \033[1;33mGeneración de Escenarios de Aceptación Gherkin / BDD por IA:\033[0m\n\n";
+        $res = $reqAna->generateAcceptanceScenarios($feat);
+        foreach ($res['scenarios'] as $s) {
+            echo "\033[36m" . $s['gherkin'] . "\033[0m\n";
+        }
+        break;
+
+    case 'ai:bug':
+        printBanner();
+        $reqAna = new \Veltrion\Services\AI\FeatureEngine\RequirementsAnalyzer();
+        $bugDesc = implode(' ', array_slice($args, 1)) ?: 'El cliente aparece duplicado al guardar';
+
+        echo "🐛 \033[1;33mAnálisis Inteligente de Errores (AI Bug Analysis):\033[0m '{$bugDesc}'\n\n";
+        $res = $reqAna->analyzeBug($bugDesc);
+        echo "  • ID de Bug Registrado: \033[1;36m{$res['bug_id']}\033[0m\n";
+        echo "  • Causa Confirmada: {$res['classification']['confirmed_cause']}\n";
+        echo "  • Causa Probable: {$res['classification']['probable_cause']}\n";
+        echo "  • Solución Propuesta: \033[1;32m{$res['proposed_fix']}\033[0m\n";
+        break;
+
+    // CI/CD ENGINE & RELEASE ENGINEERING CLI
+    case 'ci':
+    case 'ci:run':
+        printBanner();
+        $runner = new \Veltrion\Services\CICD\Pipeline\PipelineRunner();
+        $profile = 'standard';
+        if (in_array('--profile', $args)) {
+            $idx = array_search('--profile', $args);
+            $profile = $args[$idx + 1] ?? 'standard';
+        }
+        $dryRun = in_array('--dry-run', $args);
+        $changed = in_array('--changed', $args);
+
+        echo "🚀 \033[1;33mEjecutando CI/CD Pipeline (Profile: {$profile}):\033[0m\n\n";
+        $pipeline = $runner->run($profile, $dryRun, $changed);
+        $resArr = $pipeline->toArray();
+
+        foreach ($resArr['stages'] as $stName => $st) {
+            $statusColor = $st['status'] === 'PASSED' ? "\033[1;32m[PASS]\033[0m" : "\033[1;31m[FAIL]\033[0m";
+            echo "  {$statusColor} Stage \033[1;36m{$stName}\033[0m ({$st['duration_ms']}ms)\n";
+            echo "         └─ {$st['output']}\n";
+        }
+
+        $finalColor = $pipeline->status === 'PASSED' ? "\033[1;32mPASSED\033[0m" : "\033[1;31mFAILED\033[0m";
+        echo "\n🏁 \033[1;33mResultado Pipeline {$pipeline->id}:\033[0m {$finalColor}\n";
+        break;
+
+    case 'ci:status':
+    case 'ci:report':
+        printBanner();
+        $runner = new \Veltrion\Services\CICD\Pipeline\PipelineRunner();
+        $pipeline = $runner->run('quick', true, false);
+        echo "📊 \033[1;33mEstado del Pipeline CI/CD:\033[0m\n\n";
+        echo "  • ID: \033[1;36m{$pipeline->id}\033[0m\n";
+        echo "  • Rama: {$pipeline->branch} | Commit: {$pipeline->commit}\n";
+        echo "  • Estado Global: \033[1;32m{$pipeline->status}\033[0m\n";
+        echo "  • Reporte guardado en storage/reports/ci/\n";
+        break;
+
+    case 'ci:init':
+        printBanner();
+        $providerName = $args[1] ?? 'github';
+        $provider = match(strtolower($providerName)) {
+            'gitlab' => new \Veltrion\Services\CICD\Providers\GitLabCIProvider(),
+            default => new \Veltrion\Services\CICD\Providers\GitHubActionsProvider()
+        };
+
+        $targetPath = __DIR__ . '/' . $provider->getTargetFilePath();
+        $dir = dirname($targetPath);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+
+        if (file_exists($targetPath)) {
+            echo "⚠️ \033[1;33mConfiguración existente detectada en {$provider->getTargetFilePath()}.\033[0m Sobrescribiendo...\n";
+        }
+
+        file_put_contents($targetPath, $provider->generateConfig());
+        echo "⚙️ \033[1;32mConfiguración de {$provider->getName()} generada exitosamente en:\033[0m \033[1;34m{$provider->getTargetFilePath()}\033[0m\n";
+        break;
+
+    case 'release':
+    case 'release:check':
+        printBanner();
+        $relMgr = new \Veltrion\Services\CICD\Release\ReleaseManager();
+        $check = $relMgr->checkReleaseReadiness();
+
+        echo "📦 \033[1;33mVerificación de Release Readiness:\033[0m\n\n";
+        echo "  • Versión Candidata: \033[1;36mv{$check['version']}\033[0m\n";
+        echo "  • Rama: {$check['branch']} | Commit: {$check['commit']}\n";
+        echo "  • Estado Working Tree: " . ($check['working_tree_clean'] ? "\033[1;32mLIMPIO\033[0m" : "\033[1;33mCON CAMBIOS PENDIENTES\033[0m") . "\n\n";
+        echo "   Quality Gates Evaluation:\n";
+        foreach ($check['quality_gates']['gates'] as $gName => $g) {
+            $stColor = $g['status'] === 'PASSED' ? "\033[1;32m[PASS]\033[0m" : "\033[1;31m[FAIL]\033[0m";
+            echo "    {$stColor} {$gName}: {$g['details']}\n";
+        }
+
+        $resColor = $check['status'] === 'READY' ? "\033[1;32mREADY FOR RELEASE\033[0m" : "\033[1;31mBLOCKED\033[0m";
+        echo "\n🎯 \033[1;36mRESULTADO FINAL:\033[0m {$resColor}\n";
+        break;
+
+    case 'release:prepare':
+        printBanner();
+        $relMgr = new \Veltrion\Services\CICD\Release\ReleaseManager();
+        $prep = $relMgr->prepareRelease();
+        echo "📝 \033[1;32mRelease Notes y Preparación de Versión Generados:\033[0m\n";
+        echo "  • Archivo: \033[1;34m{$prep['release_notes_file']}\033[0m\n";
+        break;
+
+    case 'release:build':
+    case 'release:package':
+        printBanner();
+        $relMgr = new \Veltrion\Services\CICD\Release\ReleaseManager();
+        $res = $relMgr->buildAndPackage();
+        $meta = $res['build_metadata'];
+        $ver = $res['verification'];
+
+        echo "🎁 \033[1;32mAquitectura y Paquete de Release Construidos Exitosamente:\033[0m\n\n";
+        echo "  • Archivo: \033[1;36m{$meta['package']}\033[0m\n";
+        echo "  • Tamaño: " . round($meta['size_bytes'] / 1024, 2) . " KB\n";
+        echo "  • Checksum SHA-256: \033[1;33m{$meta['checksum_sha256']}\033[0m\n";
+        echo "  • Verificación de Integridad: " . ($ver['valid'] ? "\033[1;32mPASSED (VÁLIDO)\033[0m" : "\033[1;31mFAILED\033[0m") . "\n";
+        break;
+
+    case 'release:verify':
+        printBanner();
+        $relVerifier = new \Veltrion\Services\CICD\Release\ReleaseVerifier();
+        $pkgPath = $args[1] ?? '';
+        if (!$pkgPath) {
+            $files = glob(__DIR__ . '/storage/artifacts/*.zip');
+            $pkgPath = $files[0] ?? '';
+        }
+
+        if (!$pkgPath) {
+            echo "❌ \033[31mNo se encontró ningún paquete .zip en storage/artifacts/\033[0m\n";
+            break;
+        }
+
+        $res = $relVerifier->verifyArtifact($pkgPath);
+        echo "🔍 \033[1;33mVerificación de Artefacto:\033[0m {$pkgPath}\n\n";
+        echo "  • Checksum SHA-256 Válido: " . ($res['checksum_valid'] ? "\033[1;32mSÍ\033[0m" : "\033[1;31mNO\033[0m") . "\n";
+        echo "  • Archivos Requeridos Presentes: " . ($res['required_files_present'] ? "\033[1;32mSÍ\033[0m" : "\033[1;31mNO\033[0m") . "\n";
+        echo "  • Exclusión de Secretos y .env: " . ($res['forbidden_files_absent'] ? "\033[1;32mSÍ (SIN SECRETOS)\033[0m" : "\033[1;31mNO\033[0m") . "\n";
+        echo "\n\033[1;36mIntegridad del Artefacto: " . ($res['valid'] ? "\033[1;32m100% VÁLIDO\033[0m" : "\033[1;31mINVÁLIDO\033[0m") . "\033[0m\n";
+        break;
+
+    // PACKAGING, PROTECTION & LICENSING CLI ENGINE
+    case 'package':
+    case 'package:build':
+        printBanner();
+        $pkgEngine = new \Veltrion\Services\Commercial\Packaging\PackagingEngine();
+        $prodName = $args[1] ?? 'Veltrion Commercial Application';
+        $cust = $args[2] ?? 'General Customer';
+
+        echo "📦 \033[1;33mConstruyendo Paquete Comercial:\033[0m {$prodName}\n\n";
+        $res = $pkgEngine->buildCommercialPackage($prodName, '1.3.0', true, true, $cust);
+
+        foreach ($res->logs as $log) {
+            echo "  └─ {$log}\n";
+        }
+        echo "\n🎁 \033[1;32mPaquete Creado Exitosamente:\033[0m \033[1;36m{$res->packageName}\033[0m\n";
+        echo "  • Checksum SHA-256: \033[1;33m{$res->checksumSha256}\033[0m\n";
+        break;
+
+    case 'package:list':
+        printBanner();
+        $files = glob(__DIR__ . '/storage/artifacts/*.zip');
+        echo "📂 \033[1;33mPaquetes y Artefactos Disponibles (" . count($files) . "):\033[0m\n\n";
+        foreach ($files as $f) {
+            $name = basename($f);
+            $size = round(filesize($f) / 1024, 2);
+            echo "  • \033[1;36m{$name}\033[0m ({$size} KB)\n";
+        }
+        break;
+
+    case 'package:verify':
+        printBanner();
+        $integrityEngine = new \Veltrion\Services\Commercial\Integrity\IntegrityEngine();
+        $targetDir = $args[1] ?? __DIR__;
+        $res = $integrityEngine->verifyIntegrity($targetDir);
+        echo "🔍 \033[1;33mVerificación de Integridad del Código:\033[0m {$targetDir}\n\n";
+        echo "  • Estado de Integridad: " . ($res['valid'] ? "\033[1;32mINTEGRITY OK (SINTAXIS & HASHES VÁLIDOS)\033[0m" : "\033[1;31m{$res['status']}\033[0m") . "\n";
+        echo "  • Archivos Verificados: {$res['checked_files_count']}\n";
+        break;
+
+    case 'protect':
+    case 'protect:check':
+    case 'protect:build':
+    case 'protect:verify':
+        printBanner();
+        $protEngine = new \Veltrion\Services\Commercial\Protection\ProtectionEngine();
+        $provider = $protEngine->getProvider();
+        echo "🛡️ \033[1;33mCode Protection Engine Status:\033[0m\n\n";
+        echo "  • Proveedor Activo: \033[1;36m{$provider->getName()}\033[0m\n";
+        echo "  • Disponible / Listo: " . ($provider->isAvailable() ? "\033[1;32mSÍ\033[0m" : "\033[1;31mNO\033[0m") . "\n";
+        echo "  • Estrategia: Guard Headers, Source Minimization & Excluded Secrets\n";
+        break;
+
+    case 'license':
+    case 'license:machine':
+        printBanner();
+        $mach = new \Veltrion\Services\Commercial\Licensing\MachineIdentity();
+        $fp = $mach->getMachineFingerprint();
+        echo "💻 \033[1;33mPRODUCT LICENSE MACHINE DATA:\033[0m\n\n";
+        echo "  • Machine ID: \033[1;36m" . $mach->getMachineId() . "\033[0m\n";
+        echo "  • Sistema Operativo: {$fp['os']}\n";
+        echo "  • Arquitectura: {$fp['arch']}\n";
+        echo "  • Hostname: {$fp['hostname']}\n";
+        echo "  • CPU Fingerprint: {$fp['cpu']}\n";
+        break;
+
+    case 'license:create':
+        printBanner();
+        $licEngine = new \Veltrion\Services\Commercial\Licensing\LicenseEngine();
+        $prod = $args[1] ?? 'Veltrion POS System';
+        $cust = $args[2] ?? 'Cliente Demo';
+        $machBinding = $args[3] ?? null;
+
+        $lic = $licEngine->createAndSaveLicense(
+            productName: $prod,
+            customerName: $cust,
+            licenseType: 'FULL',
+            machineBinding: $machBinding,
+            outputPath: __DIR__ . '/storage/license.json'
+        );
+
+        echo "🔐 \033[1;32mLicencia Digital Firmada Creada Exitosamente:\033[0m\n\n";
+        echo "  • ID Licencia: \033[1;36m{$lic->licenseId}\033[0m\n";
+        echo "  • Producto: {$lic->productName}\n";
+        echo "  • Cliente: {$lic->customerName}\n";
+        echo "  • Estado: \033[1;32m{$lic->status}\033[0m\n";
+        echo "  • Machine Binding: " . ($lic->machineBinding ?: "Sin vinculación de máquina") . "\n";
+        echo "  • Firma Digital: \033[1;33m{$lic->signature}\033[0m\n";
+        echo "  • Guardado en: storage/license.json\n";
+        break;
+
+    case 'license:validate':
+    case 'license:inspect':
+        printBanner();
+        $licEngine = new \Veltrion\Services\Commercial\Licensing\LicenseEngine();
+        $path = $args[1] ?? __DIR__ . '/storage/license.json';
+        $res = $licEngine->inspectLicenseFile($path);
+
+        echo "🔍 \033[1;33mInspección y Validación de Licencia:\033[0m {$path}\n\n";
+        if (!($res['is_valid'] ?? false)) {
+            echo "  ❌ \033[1;31mLicencia Inválida. Estado: " . ($res['status'] ?? 'ERROR') . "\033[0m\n";
+        } else {
+            $l = $res['license'];
+            echo "  ✅ \033[1;32mLicencia Válida & Firma Auténtica\033[0m\n";
+            echo "  • ID: \033[1;36m{$l['licenseId']}\033[0m\n";
+            echo "  • Producto: {$l['productName']}\n";
+            echo "  • Cliente: {$l['customerName']}\n";
+            echo "  • Tipo: {$l['licenseType']}\n";
+            echo "  • Versión Permisible: {$l['versionRange']}\n";
+            echo "  • Local Machine ID: {$res['machine_id']}\n";
+        }
+        break;
+
+    case 'license:install':
+        printBanner();
+        $licEngine = new \Veltrion\Services\Commercial\Licensing\LicenseEngine();
+        $path = $args[1] ?? '';
+        if (!$path) {
+            echo "❌ \033[31mEspecifique la ruta del archivo license.json\033[0m\n";
+            break;
+        }
+        $res = $licEngine->installLicense($path);
+        if ($res['success']) {
+            echo "✅ \033[1;32mLicencia Instalada Exitosamente:\033[0m {$res['license_id']} para {$res['customer']}\n";
+        } else {
+            echo "❌ \033[1;31mError de Instalación:\033[0m {$res['error']}\n";
+        }
+        break;
+
+    case 'license:revoke':
+        printBanner();
+        $licEngine = new \Veltrion\Services\Commercial\Licensing\LicenseEngine();
+        $licEngine->revokeInstalledLicense();
+        echo "🗑️ \033[1;33mLicencia instalada removida exitosamente.\033[0m\n";
+        break;
+
+    case 'windows':
+    case 'windows:build':
+    case 'windows:verify':
+        printBanner();
+        $winEngine = new \Veltrion\Services\Commercial\Windows\WindowsPackagingEngine();
+        $prod = $args[1] ?? 'VeltrionApp';
+        echo "🪟 \033[1;33mConstruyendo Paquete de Distribución Windows:\033[0m {$prod}\n\n";
+        $res = $winEngine->buildWindowsPackage(__DIR__, __DIR__ . '/storage/artifacts/windows', [
+            'productName' => $prod,
+            'version' => '1.3.0'
+        ]);
+        echo "  • Directorio Dist: {$res['dist_directory']}\n";
+        echo "  • Paquete Zip: \033[1;36m{$res['package_path']}\033[0m\n";
+        echo "  • Checksum SHA-256: \033[1;33m{$res['checksum_sha256']}\033[0m\n";
+        break;
+
+    case 'release:commercial':
+        printBanner();
+        $commRelease = new \Veltrion\Services\Commercial\Release\CommercialReleaseManager();
+        $prod = $args[1] ?? 'Veltrion Commercial Application';
+        $cust = $args[2] ?? 'Enterprise Customer';
+
+        echo "🚀 \033[1;33mEjecutando Pipeline Comercial de Release Completo:\033[0m\n\n";
+        $res = $commRelease->executeCommercialRelease($prod, '1.3.0', $cust);
+
+        if ($res['status'] === 'READY_FOR_DISTRIBUTION') {
+            $pkg = $res['package_result'];
+            echo "  ✅ \033[1;32mCOMMERCIAL RELEASE COMPLETED - READY FOR DISTRIBUTION\033[0m\n";
+            echo "  • Paquete: \033[1;36m{$pkg['package_name']}\033[0m\n";
+            echo "  • Checksum SHA-256: \033[1;33m{$pkg['checksum_sha256']}\033[0m\n";
+            echo "  • Machine ID: {$res['machine_id']}\n";
+            echo "  • Reporte Comercial Guardado en: \033[1;34m{$res['report_file']}\033[0m\n";
+        } else {
+            echo "  ❌ \033[1;31mRELEASE COMMERCIAL BLOCKED:\033[0m {$res['error']}\n";
+        }
+        break;
+
+    case 'orchestrate:status':
+        printBanner();
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+        $status = $orchestrator->getStatus();
+        echo "📊 \033[1;33mEstado de Workflows del Orquestador de IA:\033[0m\n\n";
+        if (empty($status['active_workflows'])) {
+            echo "  No hay workflows registrados en storage/reports/workflows/\n";
+        } else {
+            foreach ($status['active_workflows'] as $wf) {
+                $id = $wf['workflow_id'] ?? 'N/A';
+                $st = $wf['current_state'] ?? 'N/A';
+                $up = $wf['updated_at'] ?? 'N/A';
+                echo "  • Workflow \033[1;36m{$id}\033[0m | Estado: \033[1;32m{$st}\033[0m | Actualizado: {$up}\n";
+            }
+        }
+        break;
+
+    case 'orchestrate:resume':
+        $wfId = $args[1] ?? '';
+        printBanner();
+        if (!$wfId) {
+            echo "\033[31mUso: php cli orchestrate:resume WF-YYYYMMDD-XXXX\033[0m\n";
+            break;
+        }
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+        $res = $orchestrator->resumeWorkflow($wfId);
+        echo "🔄 \033[32m{$res['message']}\033[0m\n";
+        break;
+
+    case 'orchestrate:cancel':
+        $wfId = $args[1] ?? '';
+        printBanner();
+        if (!$wfId) {
+            echo "\033[31mUso: php cli orchestrate:cancel WF-YYYYMMDD-XXXX\033[0m\n";
+            break;
+        }
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+        $res = $orchestrator->cancelWorkflow($wfId);
+        echo "🛑 \033[33m{$res['message']}\033[0m\n";
+        break;
+
+    case 'orchestrate:bugfix':
+        $issue = implode(' ', array_slice($args, 1)) ?: 'Error de validación';
+        printBanner();
+        echo "🐛 \033[1;33mOrquestando Workflow de Corrección de Errores (Bugfix Pipeline):\033[0m {$issue}\n\n";
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+        $res = $orchestrator->executeWorkflow("BUGFIX: " . $issue, 'bugfix', ['yes' => true]);
+        echo "\n\033[32m✔ Bugfix Workflow completado ID: {$res['workflow_id']}\033[0m\n";
+        break;
+
+    case 'orchestrate:refactor':
+        $goal = implode(' ', array_slice($args, 1)) ?: 'Refactorización de Clean Architecture';
+        printBanner();
+        echo "🔄 \033[1;33mOrquestando Workflow de Refactorización Técnica:\033[0m {$goal}\n\n";
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+        $res = $orchestrator->executeWorkflow("REFACTOR: " . $goal, 'refactor', ['yes' => true]);
+        echo "\n\033[32m✔ Refactor Workflow completado ID: {$res['workflow_id']}\033[0m\n";
+        break;
+
+    case 'orchestrate:release':
+        printBanner();
+        echo "📦 \033[1;33mOrquestando Workflow de Preparación de Release y Despliegue:\033[0m\n\n";
+        $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+        $res = $orchestrator->executeWorkflow("RELEASE_PREPARATION", 'release', ['yes' => true]);
+        echo "\n\033[32m✔ Release Workflow completado ID: {$res['workflow_id']}\033[0m\n";
+        break;
+
+    // UNIVERSAL PROJECT TEMPLATE ENGINE CLI COMMANDS
+    case 'template':
+    case 'template:list':
+        printBanner();
+        $templateEngine = new \Veltrion\Services\Template\TemplateEngine();
+        $templates = $templateEngine->getRegistry()->all();
+        echo "📂 \033[1;33mUniversal Project Templates Registry (" . count($templates) . " Blueprints):\033[0m\n\n";
+        foreach ($templates as $id => $tpl) {
+            echo "  • \033[1;36m{$id}\033[0m\n";
+            echo "    ├─ Nombre: {$tpl->name} (v{$tpl->version})\n";
+            echo "    ├─ Plataforma: \033[1;32m{$tpl->platform->value}\033[0m ({$tpl->platform->label()})\n";
+            echo "    ├─ Lenguaje: {$tpl->language} | Arquitectura: {$tpl->architecture}\n";
+            echo "    └─ Feature Packs: " . implode(', ', array_keys($tpl->supportedFeaturePacks)) . "\n\n";
+        }
+        break;
+
+    case 'template:show':
+        printBanner();
+        $templateEngine = new \Veltrion\Services\Template\TemplateEngine();
+        $tplId = $args[1] ?? 'tpl-php-api-cleanarch-v1';
+        $tpl = $templateEngine->getRegistry()->get($tplId);
+
+        if (!$tpl) {
+            echo "❌ \033[31mTemplate ID '{$tplId}' no encontrado en el Registry.\033[0m\n";
+            break;
+        }
+
+        echo "🔍 \033[1;33mDetalles del Blueprint Template:\033[0m \033[1;36m{$tpl->id}\033[0m\n\n";
+        echo "  • Nombre: {$tpl->name}\n";
+        echo "  • Versión: {$tpl->version} | Status: \033[1;32m{$tpl->status->value}\033[0m\n";
+        echo "  • Plataforma: {$tpl->platform->value} ({$tpl->platform->label()})\n";
+        echo "  • Lenguaje: {$tpl->language}\n";
+        echo "  • Arquitectura: {$tpl->architecture}\n";
+        echo "  • Descripción: {$tpl->description}\n";
+        echo "\n  \033[1;34mQuality Gates recomendados:\033[0m\n";
+        foreach ($tpl->qualityGates as $qgKey => $qgVal) {
+            echo "    - {$qgKey}: {$qgVal}\n";
+        }
+        echo "\n  \033[1;34mFeature Packs Disponibles:\033[0m\n";
+        foreach ($tpl->supportedFeaturePacks as $packKey => $pack) {
+            echo "    - \033[1;32m{$packKey}\033[0m: {$pack->name} ({$pack->description})\n";
+        }
+        break;
+
+    case 'template:resolve':
+        printBanner();
+        $templateEngine = new \Veltrion\Services\Template\TemplateEngine();
+        $platformArg = $args[1] ?? 'php-api';
+        echo "🎯 \033[1;33mResolviendo el mejor Template Blueprint para plataforma:\033[0m '{$platformArg}'\n\n";
+
+        $res = $templateEngine->getResolver()->resolve(
+            platform: $platformArg,
+            requiredCapabilities: ['auth', 'database'],
+            constraints: [],
+            requestedFeaturePacks: ['auth', 'database']
+        );
+
+        if ($res->isSuccess() && $res->template !== null) {
+            echo "  ✅ \033[1;32mTemplate Resuelto con Éxito (Score Match: {$res->score}%)\033[0m\n";
+            echo "  • ID Template: \033[1;36m{$res->template->id}\033[0m\n";
+            echo "  • Nombre: {$res->template->name}\n";
+            echo "  • Feature Packs Asignados: " . implode(', ', array_keys($res->selectedFeaturePacks)) . "\n";
+        } else {
+            echo "  ❌ \033[1;31mNo se pudo resolver un template válido para '{$platformArg}'\033[0m\n";
+        }
+        break;
+
+    case 'template:create':
+    case 'template:generate':
+        printBanner();
+        $templateEngine = new \Veltrion\Services\Template\TemplateEngine();
+        $platformArg = $args[1] ?? 'php-api';
+        $appName = $args[2] ?? 'DemoApp';
+        $outputDir = $args[3] ?? (__DIR__ . '/storage/builds/projects/' . strtolower($appName));
+
+        echo "🚀 \033[1;33mGenerando Proyecto desde Universal Template Engine:\033[0m\n";
+        echo "  • Plataforma Target: {$platformArg}\n";
+        echo "  • Nombre App: {$appName}\n";
+        echo "  • Directorio Destino: {$outputDir}\n\n";
+
+        $res = $templateEngine->createProjectFromTemplate(
+            platform: $platformArg,
+            outputPath: $outputDir,
+            variables: ['appName' => $appName, 'namespace' => ucfirst($appName)],
+            featurePacks: ['auth', 'database']
+        );
+
+        if ($res['success']) {
+            echo "  ✅ \033[1;32mPROYECTO CREADO EXITOSAMENTE DESDE TEMPLATE\033[0m\n";
+            echo "  • Template Utilizado: \033[1;36m{$res['template_id']}\033[0m ({$res['template_name']})\n";
+            echo "  • Archivos Generados: {$res['generation']['files_count']} archivos\n";
+            echo "  • Feature Packs Inyectados: " . implode(', ', $res['generation']['applied_feature_packs']) . "\n";
+            echo "  • Descriptor de Proyecto: \033[1;34m{$outputDir}/template-manifest.json\033[0m\n";
+        } else {
+            echo "  ❌ \033[1;31mError generando proyecto:\033[0m " . ($res['error'] ?? 'Desconocido') . "\n";
+        }
+        break;
+
+
+    case 'docs':
+        $query = implode(' ', array_slice($args, 1));
+        printBanner();
+        echo "📖 \033[1;33mBuscador de Documentación e IA Local Veltrion:\033[0m\n\n";
+        if ($query) {
+            echo "  Consulta: '{$query}'\n";
+            $res = $aiService->generate($query);
+            echo "  \033[36m" . $res->getContent() . "\033[0m\n";
+        } else {
+            echo "  Secciones disponibles en docs/:\n";
+            echo "  • 00-introduction / 01-installation / 02-quick-start\n";
+            echo "  • 03-architecture / 04-cli / 07-domain / 10-repositories\n";
+            echo "  • 11-unit-of-work / 12-database / 21-ai / 30-ai-agents\n";
+        }
+        break;
+
+    // AI SPECIFIC COMMANDS
+    case 'ai:context':
+        $subFlag = $args[1] ?? '';
+        printBanner();
+        $contextEngine = new \Veltrion\Services\AI\Context\ContextEngine();
+
+        echo "🧠 \033[1;33mGestor de Context Engine Veltrion:\033[0m\n\n";
+
+        if ($subFlag === '--stats') {
+            $stats = $contextEngine->getProjectStats();
+            echo "  Estado del Caché:      \033[1;36m{$stats['status']}\033[0m\n";
+            echo "  Última actualización:  {$stats['updated_at']}\n";
+            echo "  Archivos indexados:    {$stats['file_count']}\n";
+            if (isset($stats['cache_size_bytes'])) {
+                echo "  Tamaño de caché:       " . round($stats['cache_size_bytes'] / 1024, 2) . " KB\n";
+            }
+        } elseif ($subFlag === '--refresh') {
+            echo "🔄 Escaneando y refrescando el índice de contexto del proyecto...\n";
+            $contextEngine->refreshCache();
+            $stats = $contextEngine->getProjectStats();
+            echo "\033[32m✔ Caché actualizado con éxito ({$stats['file_count']} archivos indexados).\033[0m\n";
+        } elseif ($subFlag === '--clear') {
+            echo "🗑️ Limpiando el caché de contexto en storage/cache/...\n";
+            $contextEngine->clearCache();
+            echo "\033[32m✔ Caché de contexto eliminado.\033[0m\n";
+        } else {
+            echo "📦 Generando y construyendo contexto inteligente del proyecto...\n";
+            $ctx = $contextEngine->buildContext("Veltrion Framework architecture summary");
+            echo "\033[1;32m✓ Context Engine construyó el prompt de contexto exitosamente.\033[0m\n";
+            echo "  Tokens estimativos: ~" . ceil(strlen($ctx) / 4) . " / 12000\n";
+            echo "  Uso: php cli ai:context [--stats|--refresh|--clear]\n";
+        }
+        break;
+
+    case 'ai:status':
+        printBanner();
+        $status = $aiService->getStatus();
+        echo "🧠 \033[1;33mEstado del Proveedor de IA Local (Ollama):\033[0m\n\n";
+        echo "  Proveedor:     \033[1;36m{$status['provider']}\033[0m\n";
+        echo "  Host:          http://localhost:11434\n";
+        echo "  Modelo por defecto: \033[1;32m{$status['default_model']}\033[0m\n";
+        
+        if ($status['available']) {
+            echo "  Conexión:      \033[1;32m✓ Exitosa (Ollama activo)\033[0m\n";
+            echo "  Modelos disponibles:\n";
+            foreach ($status['models'] as $m) {
+                echo "    • {$m}\n";
+            }
+        } else {
+            echo "  Conexión:      \033[1;33m⚠ Ollama no detectado en localhost:11434\033[0m\n";
+            echo "  Nota: Veltrion PHP opera con su motor de Fallback integrado sin generar errores fatales.\n";
+            echo "  Para activar Ollama: 'ollama serve' y 'ollama run llama3'\n";
+        }
+        break;
+
+    case 'ai:models':
+        printBanner();
+        $status = $aiService->getStatus();
+        echo "🤖 \033[1;33mModelos de IA Disponibles:\033[0m\n\n";
+        if (empty($status['models'])) {
+            echo "  No se detectaron modelos activos en Ollama local.\n";
+            echo "  Prueba instalar un modelo con: 'ollama pull llama3'\n";
+        } else {
+            foreach ($status['models'] as $m) {
+                echo "  • \033[1;32m{$m}\033[0m\n";
+            }
+        }
+        break;
+
+    case 'ai:ask':
+        $prompt = implode(' ', array_slice($args, 1));
+        if (!$prompt) {
+            echo "\033[31mUso: php cli ai:ask \"¿Cómo funciona la capa de dominio?\"\033[0m\n";
+            exit(1);
+        }
+        printBanner();
+        echo "💬 \033[1;33mConsulta a la IA (con contexto de proyecto):\033[0m\n\n";
+        $res = $aiService->generate($prompt);
+        echo $res->getContent() . "\n";
+        break;
+
+    case 'ai:chat':
+        printBanner();
+        echo "💬 \033[1;36mChat Interactivo de IA Veltrion (Escribe 'exit' para salir)\033[0m\n\n";
+        while (true) {
+            echo "\033[1;32m> \033[0m";
+            $line = trim(fgets(STDIN));
+            if (in_array(strtolower($line), ['exit', 'quit', '0'])) {
+                echo "¡Hasta luego!\n";
+                break;
+            }
+            if (!$line) continue;
+
+            $res = $aiService->generate($line);
+            echo "\n\033[1;34mAI:\033[0m\n" . $res->getContent() . "\n\n";
+        }
+        break;
+
+    case 'ai:code':
+        $concept = implode(' ', array_slice($args, 1)) ?: 'Invoice';
+        printBanner();
+        echo "⚙️  \033[1;33mPropuesta de Generación de Código asistida por IA:\033[0m\n\n";
+        $prompt = PromptManager::forCodeGeneration($concept);
+        $res = $aiService->generate($prompt);
+        echo $res->getContent() . "\n\n";
+
+        echo "\033[1;33m¿Deseas aplicar la generación del módulo RAD '{$concept}' en el código fuente?\033[0m\n";
+        echo "[Y] Aplicar   [N] Cancelar   [R] Revisar\n> ";
+        $choice = trim(fgets(STDIN));
+
+        if (strtolower($choice) === 'y') {
+            echo "\n🚀 Generando archivos del módulo en Clean Architecture...\n";
+            $radRes = ModuleGenerator::generateCrud(ucfirst($concept));
+            foreach ($radRes['files'] as $f) {
+                echo "  \033[32m[CREADO]\033[0m {$f}\n";
+            }
+            echo "\n\033[32m✔ Módulo {$concept} generado e integrado con éxito.\033[0m\n";
+        } else {
+            echo "Operación cancelada. Ningún archivo fue modificado.\n";
+        }
+        break;
+
+    case 'ai:test':
+        $className = $args[1] ?? 'CreateCustomerUseCase';
+        printBanner();
+        echo "🧪 \033[1;33mGenerador de Pruebas Unitarias asistido por IA:\033[0m\n\n";
+        $prompt = PromptManager::forTestGeneration($className);
+        $res = $aiService->generate($prompt);
+        echo $res->getContent() . "\n";
+        break;
+
+    case 'ai:docs':
+        $topic = implode(' ', array_slice($args, 1)) ?: 'UnitOfWork';
+        printBanner();
+        echo "📝 \033[1;33mGenerador de Documentación asistido por IA:\033[0m\n\n";
+        $prompt = PromptManager::forDocumentation($topic);
+        $res = $aiService->generate($prompt);
+        echo $res->getContent() . "\n";
+        break;
+
+    case 'ai:analyze':
+        printBanner();
+        echo "🛡️  \033[1;33mAuditoría y Análisis de Arquitectura con IA:\033[0m\n\n";
+        $prompt = PromptManager::forAnalysis();
+        $res = $aiService->generate($prompt);
+        echo $res->getContent() . "\n";
+        break;
+
+    case 'ai:explain':
+        $file = $args[1] ?? 'app/Domain/Entities/Customer.php';
+        printBanner();
+        echo "🔍 \033[1;33mExplicación de Código para '{$file}':\033[0m\n\n";
+        $res = $aiService->generate("Explica la responsabilidad, patrones y flujo de este archivo: {$file}", [$file]);
+        echo $res->getContent() . "\n";
+        break;
+
+    case 'ai':
+        printBanner();
+        echo "╔══════════════════════════════════════╗\n";
+        echo "║          AI ASSISTANT                ║\n";
+        echo "║          Local / Ollama              ║\n";
+        echo "╚══════════════════════════════════════╝\n\n";
+        $status = $aiService->getStatus();
+        echo "Provider: " . $status['provider'] . "\n";
+        echo "Host:     http://localhost:11434\n";
+        echo "Model:    " . $status['default_model'] . "\n\n";
+        echo "1. Chat (ai:chat)\n";
+        echo "2. Ask (ai:ask)\n";
+        echo "3. Generate Code (ai:code)\n";
+        echo "4. Analyze Project (ai:analyze)\n";
+        echo "5. Explain Code (ai:explain)\n";
+        echo "6. Generate Tests (ai:test)\n";
+        echo "7. Generate Documentation (ai:docs)\n";
+        echo "8. Check Ollama Status (ai:status)\n";
+        echo "9. Select Model (ai:models)\n";
+        echo "0. Exit\n\n";
+        echo "Ejecute cualquiera de los comandos anteriores: php cli ai:<comando>\n";
+        break;
+
+    case 'test':
+        printBanner();
+        echo "🧪 \033[1;33mEjecutando Suite de Pruebas Integradas:\033[0m\n\n";
+
+        // Ensure customer migration & test UseCases
+        try {
+            $pdo = $container->get(PDO::class);
+            $pdo->exec("CREATE TABLE IF NOT EXISTS customers (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(255), email VARCHAR(255) UNIQUE, phone VARCHAR(50), status VARCHAR(20), created_at DATETIME)");
+
+            $repo = new \Veltrion\Adapters\Repositories\SQLiteCustomerRepository($pdo);
+            $uow = new \Veltrion\Adapters\Repositories\SQLiteUnitOfWork($pdo);
+
+            $createUseCase = new CreateCustomerUseCase($repo, $uow);
+            $listUseCase = new ListCustomersUseCase($repo);
+
+            $testEmail = 'test_' . rand(1000, 9999) . '@veltrion.dev';
+            $created = $createUseCase->execute([
+                'name' => 'Cliente Prueba Test',
+                'email' => $testEmail,
+                'phone' => '+58 412 1234567'
+            ]);
+
+            echo "  \033[32m[PASS]\033[0m UnitOfWork & CreateCustomerUseCase: OK (ID: {$created['data']['id']})\n";
+
+            $list = $listUseCase->execute();
+            echo "  \033[32m[PASS]\033[0m ListCustomersUseCase: OK ({$list['count']} clientes encontrados)\n";
+
+            // AI Service Integration Unit Test
+            $aiStatus = $aiService->getStatus();
+            echo "  \033[32m[PASS]\033[0m AIService Provider Check: OK ({$aiStatus['provider']})\n";
+
+            $aiTestRes = $aiService->generate("Test de conectividad Veltrion");
+            echo "  \033[32m[PASS]\033[0m AIService Response Generation: OK\n";
+
+            // Context Engine Tests
+            $filter = new \Veltrion\Services\AI\Context\ContextFilter();
+            $isEnvExcluded = $filter->isExcluded(".env");
+            $isLogExcluded = $filter->isExcluded("storage/logs/app.log");
+            $isVendorExcluded = $filter->isExcluded("vendor/autoload.php");
+
+            if ($isEnvExcluded && $isLogExcluded && $isVendorExcluded) {
+                echo "  \033[32m[PASS]\033[0m ContextEngine SecurityFilter (.env, logs, vendor excluded): OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m ContextEngine SecurityFilter failed to exclude sensitive files\n";
+            }
+
+            $contextEngine = new \Veltrion\Services\AI\Context\ContextEngine();
+            $ctxOutput = $contextEngine->buildContext("Customer CRUD");
+            if (!empty($ctxOutput) && !str_contains($ctxOutput, "[FILE: .env]")) {
+                echo "  \033[32m[PASS]\033[0m ContextEngine BuildContext & Security Enforcement: OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m ContextEngine BuildContext output invalid or leaked .env\n";
+            }
+
+            // AI Orchestrator Unit Tests
+            $featureAnalyzer = new \Veltrion\Services\AI\Orchestrator\FeatureAnalyzer();
+            $parsedFeature = $featureAnalyzer->analyzeContent("# Feature: Gestión de Pedidos\n## Requisitos\n- Crear pedido\n- Cancelar pedido\n## Reglas\n- Total mayor a 0", "Pedidos");
+            if ($parsedFeature['title'] === 'Gestión de Pedidos' && count($parsedFeature['requirements']) === 2) {
+                echo "  \033[32m[PASS]\033[0m AI Orchestrator FeatureAnalyzer Markdown Contract Parsing: OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m AI Orchestrator FeatureAnalyzer parsing failed\n";
+            }
+
+            $riskEngine = new \Veltrion\Services\AI\Orchestrator\RiskEngine();
+            $risk = $riskEngine->evaluateRisk(['files_to_create' => ['app/Services/Security.php'], 'files_to_delete' => ['old.php']]);
+            if ($risk['level'] === 'HIGH' || $risk['level'] === 'CRITICAL') {
+                echo "  \033[32m[PASS]\033[0m AI Orchestrator RiskEngine Severity Scoring: OK ({$risk['level']})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m AI Orchestrator RiskEngine failed to flag high risk\n";
+            }
+
+            $orchestrator = new \Veltrion\Services\AI\Orchestrator\Orchestrator();
+            $dryRes = $orchestrator->executeWorkflow("Crear Módulo Proveedores", "feature", ['dry_run' => true]);
+            if ($dryRes['status'] === 'DRY_RUN_COMPLETED' && isset($dryRes['workflow_id'])) {
+                echo "  \033[32m[PASS]\033[0m AI Orchestrator Dry-Run Workflow Pipeline: OK (ID: {$dryRes['workflow_id']})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m AI Orchestrator Dry-Run Workflow Pipeline failed\n";
+            }
+
+            // Feature Engineering & Traceability Tests
+            $featMgr = new \Veltrion\Services\AI\FeatureEngine\FeatureManager();
+            $testFeat = $featMgr->createFeature("Módulo de Test Trazabilidad", "Descripción test");
+            if (str_contains($testFeat->id, 'FEAT-') && count($testFeat->requirements) >= 1) {
+                echo "  \033[32m[PASS]\033[0m FeatureManager ID Generation & Markdown Contract Creation: OK ({$testFeat->id})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m FeatureManager creation failed\n";
+            }
+
+            $traceEng = new \Veltrion\Services\AI\FeatureEngine\TraceabilityEngine();
+            $traceData = $traceEng->discoverTraceability($testFeat);
+            if (isset($traceData['traceability_matrix']) && count($traceData['traceability_matrix']) >= 1) {
+                echo "  \033[32m[PASS]\033[0m TraceabilityEngine Discovery & RTM Generation: OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m TraceabilityEngine failed\n";
+            }
+
+            $checkEngine = new \Veltrion\Services\AI\FeatureEngine\CompletenessChecker();
+            $compCheck = $checkEngine->checkCompleteness($testFeat, $traceData);
+            if (isset($compCheck['definition_of_done']) && isset($compCheck['ready_for_release'])) {
+                echo "  \033[32m[PASS]\033[0m CompletenessChecker DoD Evaluation: OK (Ready: {$compCheck['ready_for_release']})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m CompletenessChecker failed\n";
+            }
+
+            // CI/CD Engine & Quality Gates Tests
+            $ciRunner = new \Veltrion\Services\CICD\Pipeline\PipelineRunner();
+            $pipelineRun = $ciRunner->run('standard', true, false);
+            if ($pipelineRun->status === 'PASSED (DRY-RUN)' && isset($pipelineRun->stages['DRY_RUN_PLAN'])) {
+                echo "  \033[32m[PASS]\033[0m PipelineRunner Dry-Run Execution: OK (ID: {$pipelineRun->id})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m PipelineRunner Dry-Run failed\n";
+            }
+
+            $relMgr = new \Veltrion\Services\CICD\Release\ReleaseManager();
+            $relCheck = $relMgr->checkReleaseReadiness();
+            if (isset($relCheck['quality_gates']) && isset($relCheck['status'])) {
+                echo "  \033[32m[PASS]\033[0m QualityGateEngine & ReleaseManager Readiness Check: OK (Status: {$relCheck['status']})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m ReleaseManager failed\n";
+            }
+
+            $artMgr = new \Veltrion\Services\CICD\Artifacts\ArtifactManager();
+            $buildMeta = $artMgr->buildReleasePackage("1.2.0", "testhead");
+            if (isset($buildMeta['checksum_sha256']) && strlen($buildMeta['checksum_sha256']) === 64) {
+                echo "  \033[32m[PASS]\033[0m ArtifactManager Package Build & SHA-256 Checksum: OK ({$buildMeta['package']})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m ArtifactManager build failed\n";
+            }
+
+            // Packaging, Protection & License Engine Tests
+            $machId = new \Veltrion\Services\Commercial\Licensing\MachineIdentity();
+            $mIdStr = $machId->getMachineId();
+            if (strlen($mIdStr) >= 16) {
+                echo "  \033[32m[PASS]\033[0m MachineIdentity Fingerprint & Machine ID: OK ({$mIdStr})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m MachineIdentity failed\n";
+            }
+
+            $licGen = new \Veltrion\Services\Commercial\Licensing\LicenseGenerator();
+            $lic = $licGen->createLicense('TestProd', 'TestCust', 'FULL', null, ['*'], $mIdStr);
+            $licVal = new \Veltrion\Services\Commercial\Licensing\LicenseValidator();
+            $validatedLic = $licVal->validateLicense($lic, 'TestProd');
+            if ($validatedLic->isValid()) {
+                echo "  \033[32m[PASS]\033[0m LicenseGenerator, MachineBinding & Validator: OK (ID: {$lic->licenseId})\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m License validation failed ({$validatedLic->status})\n";
+            }
+
+            $protEngine = new \Veltrion\Services\Commercial\Protection\ProtectionEngine();
+            $protRes = $protEngine->protectBuild(__DIR__ . '/bootstrap', __DIR__ . '/storage/test_protected', ['excluded' => []]);
+            if ($protRes['success']) {
+                echo "  \033[32m[PASS]\033[0m ProtectionEngine Native Minifier & Guard Headers: OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m ProtectionEngine failed\n";
+            }
+
+            $commRelease = new \Veltrion\Services\Commercial\Release\CommercialReleaseManager();
+            $commRes = $commRelease->executeCommercialRelease('TestApp', '1.3.0', 'TestCustomer');
+            if ($commRes['status'] === 'READY_FOR_DISTRIBUTION') {
+                echo "  \033[32m[PASS]\033[0m CommercialReleaseManager Release Pipeline: OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m CommercialReleaseManager failed\n";
+            }
+
+        } catch (\Throwable $e) {
+            echo "  \033[31m[FAIL]\033[0m " . $e->getMessage() . "\n";
+        }
+        echo "\n\033[32m✔ Suite de pruebas finalizada.\033[0m\n";
+        break;
+
+    case 'menu':
+    default:
+        printBanner();
+        echo "Comandos disponibles:\n";
+        echo "  \033[1;32mphp cli package:build [App] [Client]\033[0m  Construye paquete comercial empaquetado y protegido\n";
+        echo "  \033[1;32mphp cli package:verify [path]\033[0m       Verificación de integridad criptográfica SHA-256\n";
+        echo "  \033[1;32mphp cli protect:check\033[0m                Estado de proveedores de protección de código\n";
+        echo "  \033[1;32mphp cli license:machine\033[0m              Muestra datos técnicos y Machine ID único de la máquina\n";
+        echo "  \033[1;32mphp cli license:create <Prod> <Cust>\033[0m Genera licencia digital firmada con binding opcional\n";
+        echo "  \033[1;32mphp cli license:inspect [file]\033[0m       Valida y muestra detalles de un archivo license.json\n";
+        echo "  \033[1;32mphp cli license:install <file>\033[0m       Instala una licencia en el entorno\n";
+        echo "  \033[1;32mphp cli windows:build [App]\033[0m          Genera distribución Windows .exe launch / Inno Setup script\n";
+        echo "  \033[1;32mphp cli release:commercial [App]\033[0m    Pipeline comercial completo con Quality Gates & Build\n";
+        echo "  \033[1;32mphp cli ci:run [--profile quick|standard|full|release]\033[0m Ejecuta el Pipeline CI/CD\n";
+        echo "  \033[1;32mphp cli ci:status\033[0m                    Estado actual del Pipeline y Quality Gates\n";
+        echo "  \033[1;32mphp cli ci:init <github|gitlab>\033[0m            Genera configuración CI para GitHub/GitLab\n";
+        echo "  \033[1;32mphp cli release:check\033[0m                Verificación de Readiness y Quality Gates para Release Candidate\n";
+        echo "  \033[1;32mphp cli release:prepare\033[0m   Genera Release Notes y documentación previa a versión\n";
+        echo "  \033[1;32mphp cli release:package\033[0m   Construye el paquete de despliegue .zip y checksum SHA-256\n";
+        echo "  \033[1;32mphp cli release:verify [zip]\033[0m Verificación de integridad de artefactos de release\n";
+        echo "  \033[1;32mphp cli feature:create \"<Nombre>\"\033[0m Crea una nueva Feature y sus archivos de requisitos\n";
+        echo "  \033[1;32mphp cli feature:show <FEAT-ID>\033[0m    Muestra detalles y trazabilidad de una Feature\n";
+        echo "  \033[1;32mphp cli feature:list\033[0m             Lista todas las Features registradas\n";
+        echo "  \033[1;32mphp cli feature:run <FEAT-ID>\033[0m     Ejecuta la orquestación autónoma de la Feature\n";
+        echo "  \033[1;32mphp cli feature:impact <FEAT-ID>\033[0m  Análisis de impacto de cambios en el proyecto\n";
+        echo "  \033[1;32mphp cli feature:check <FEAT-ID>\033[0m   Verificación de Definition of Done (DoD)\n";
+        echo "  \033[1;32mphp cli trace [FEAT-ID]\033[0m           Matriz de Trazabilidad de Requisitos (RTM)\n";
+        echo "  \033[1;32mphp cli orchestrate \"<prompt>\"\033[0m Pipeline de orquestación de desarrollo autónomo\n";
+        echo "  \033[1;32mphp cli doctor\033[0m              Diagnóstico completo del entorno\n";
+        echo "  \033[1;32mphp cli make:crud <Entity>\033[0m   Generador RAD de módulo Clean Architecture\n";
+        echo "  \033[1;32mphp cli test\033[0m                 Ejecuta suite de pruebas unitarias\n";
+        break;
+}

@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\Commercial\Protection;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  use Veltrion\Services\Commercial\Protection\Contracts\ProtectionProviderInterface; class ExternalEncoderProvider implements ProtectionProviderInterface { private ?string $command; public function __construct(?string $command = null) { $this->command = $command ?? (getenv('PROTECTION_COMMAND') ?: null); } public function getName(): string { return 'External Encoder Provider (ionCube / phpGuard / Custom)'; } public function isAvailable(): bool { return !empty($this->command); } public function protectDirectory(string $sourceDir, string $targetDir, array $options = []): array { if (!$this->isAvailable()) { return [ 'success' => false, 'error' => 'External protection command is not configured. Set PROTECTION_COMMAND env variable or config.' ]; } $cmd = str_replace( ['{source}', '{target}'], [escapeshellarg($sourceDir), escapeshellarg($targetDir)], $this->command ); $output = shell_exec($cmd . ' 2>&1'); return [ 'success' => true, 'provider' => $this->getName(), 'command' => $cmd, 'output' => $output ]; } } 

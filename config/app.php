@@ -1,0 +1,4 @@
+<?php
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+ return [ 'name' => 'Veltrion Framework', 'env' => 'development', 'version' => trim(file_exists(__DIR__ . '/../VERSION') ? file_get_contents(__DIR__ . '/../VERSION') : '1.0.0-alpha'), 'timezone' => 'UTC', 'locale' => 'es', 'url' => processEnv('APP_URL', 'http://localhost:3000'), ]; function processEnv(string $key, string $default = ''): string { $val = getenv($key); return ($val !== false && $val !== '') ? $val : $default; } 

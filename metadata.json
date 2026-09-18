@@ -1,0 +1,6 @@
+{
+  "name": "Veltrion Framework",
+  "description": "Ecosistema de ingeniería PHP asistido por CLI, IA local y agentes autónomos",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

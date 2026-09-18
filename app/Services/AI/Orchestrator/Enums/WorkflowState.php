@@ -1,0 +1,6 @@
+<?php
+namespace Veltrion\Services\AI\Orchestrator\Enums;
+
+/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
+if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
+  class WorkflowState { public const CREATED = 'CREATED'; public const ANALYZING = 'ANALYZING'; public const PLANNING = 'PLANNING'; public const WAITING_APPROVAL = 'WAITING_APPROVAL'; public const GENERATING = 'GENERATING'; public const APPLYING = 'APPLYING'; public const TESTING = 'TESTING'; public const SECURITY_CHECK = 'SECURITY_CHECK'; public const E2E_CHECK = 'E2E_CHECK'; public const PERFORMANCE_CHECK = 'PERFORMANCE_CHECK'; public const DOCUMENTING = 'DOCUMENTING'; public const REVIEWING = 'REVIEWING'; public const COMPLETED = 'COMPLETED'; public const FAILED = 'FAILED'; public const CANCELLED = 'CANCELLED'; public static function getAll(): array { return [ self::CREATED, self::ANALYZING, self::PLANNING, self::WAITING_APPROVAL, self::GENERATING, self::APPLYING, self::TESTING, self::SECURITY_CHECK, self::E2E_CHECK, self::PERFORMANCE_CHECK, self::DOCUMENTING, self::REVIEWING, self::COMPLETED, self::FAILED, self::CANCELLED ]; } } 
