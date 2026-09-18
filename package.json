@@ -1,0 +1,9 @@
+{
+  "name": "veltrion-framework",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Veltrion PHP Framework - AI & Agent-Powered PHP Ecosystem",
+  "scripts": {
+    "build": "echo 'Veltrion PHP Framework ready'"
+  }
+}
