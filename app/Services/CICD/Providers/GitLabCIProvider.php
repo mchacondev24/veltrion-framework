@@ -1,6 +1,52 @@
 <?php
+
 namespace Veltrion\Services\CICD\Providers;
 
-/* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
-if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
-  use Veltrion\Services\CICD\Providers\Contracts\CIProviderInterface; class GitLabCIProvider implements CIProviderInterface { public function getName(): string { return 'GitLab CI'; } public function getTargetFilePath(): string { return '.gitlab-ci.yml'; } public function generateConfig(): string { return <<<'YAML' image: php:8.2-cli stages: - validate - test - quality_gates - release cache: paths: - vendor/ before_script: - apt-get update -y && apt-get install -y git unzip libzip-dev - docker-php-ext-install zip pdo pdo_mysql - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer - composer install --prefer-dist --no-progress lint: stage: validate script: - php -l bootstrap/app.php unit_tests: stage: test script: - php cli test quality_gates: stage: quality_gates script: - php cli ci:run --profile standard release_check: stage: release script: - php cli release:check YAML; } } 
+use Veltrion\Services\CICD\Providers\Contracts\CIProviderInterface;
+
+class GitLabCIProvider implements CIProviderInterface
+{
+    public function getName(): string
+    {
+        return 'GitLab CI';
+    }
+
+    public function getTargetFilePath(): string
+    {
+        return '.gitlab-ci.yml';
+    }
+
+    public function generateConfig(): string
+    {
+        return "image: php:8.2-cli\n\n" .
+            "stages:\n" .
+            "  - validate\n" .
+            "  - test\n" .
+            "  - quality_gates\n" .
+            "  - release\n\n" .
+            "cache:\n" .
+            "  paths:\n" .
+            "    - vendor/\n\n" .
+            "before_script:\n" .
+            "  - apt-get update -y && apt-get install -y git unzip libzip-dev\n" .
+            "  - docker-php-ext-install zip pdo pdo_mysql\n" .
+            "  - curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer\n" .
+            "  - composer install --prefer-dist --no-progress\n\n" .
+            "lint:\n" .
+            "  stage: validate\n" .
+            "  script:\n" .
+            "    - php -l bootstrap/app.php\n\n" .
+            "unit_tests:\n" .
+            "  stage: test\n" .
+            "  script:\n" .
+            "    - php cli test\n\n" .
+            "quality_gates:\n" .
+            "  stage: quality_gates\n" .
+            "  script:\n" .
+            "    - php cli ci:run --profile standard\n\n" .
+            "release_check:\n" .
+            "  stage: release\n" .
+            "  script:\n" .
+            "    - php cli release:check\n";
+    }
+}

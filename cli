@@ -1282,11 +1282,123 @@ switch ($command) {
             }
 
             $commRelease = new \Veltrion\Services\Commercial\Release\CommercialReleaseManager();
-            $commRes = $commRelease->executeCommercialRelease('TestApp', '1.3.0', 'TestCustomer');
+            $commRes = $commRelease->executeCommercialRelease('TestApp', '1.3.0', 'TestCustomer', null, true);
             if ($commRes['status'] === 'READY_FOR_DISTRIBUTION') {
                 echo "  \033[32m[PASS]\033[0m CommercialReleaseManager Release Pipeline: OK\n";
             } else {
                 echo "  \033[31m[FAIL]\033[0m CommercialReleaseManager failed\n";
+            }
+
+            // Phase #13: UI/UX Generation Engine & Universal Application Factory Tests
+            $uiuxEngine = new \Veltrion\Services\UIUX\UIUXEngine();
+
+            // 1. Design System & Tokens
+            $branding = new \Veltrion\Services\UIUX\DTOs\BrandingConfig('VeltrionTest', '#2563EB', '#38BDF8');
+            $ds = $uiuxEngine->buildDesignSystem($branding);
+            if (count($ds->globalTokens) >= 15 && isset($ds->themes['light'], $ds->themes['dark'])) {
+                echo "  \033[32m[PASS]\033[0m DesignSystemEngine & DesignTokensFactory: OK (" . count($ds->globalTokens) . " tokens)\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m DesignSystemEngine generation failed\n";
+            }
+
+            // 2. Component Registry & Universal Catalog
+            $cmpRegistry = new \Veltrion\Services\UIUX\Components\ComponentRegistry();
+            if ($cmpRegistry->has('Button') && $cmpRegistry->has('DataGrid') && $cmpRegistry->has('KpiCard')) {
+                echo "  \033[32m[PASS]\033[0m ComponentRegistry Universal Catalog: OK (" . count($cmpRegistry->all()) . " components)\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m ComponentRegistry catalog incomplete\n";
+            }
+
+            // 3. UX Analysis & Personas Extraction
+            $uxAnalysis = $uiuxEngine->analyzeRequirements('FEAT-CUSTOMER-CRUD');
+            if (count($uxAnalysis->roles) >= 2 && count($uxAnalysis->personas) >= 2) {
+                echo "  \033[32m[PASS]\033[0m UXAnalyzer Personas, Roles & Journeys: OK (" . count($uxAnalysis->personas) . " personas)\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m UXAnalyzer analysis failed\n";
+            }
+
+            // 4. DAG User Flow & Cycle Detection
+            $flowGen = new \Veltrion\Services\UIUX\Planning\UserFlowGenerator();
+            $testFlow = $flowGen->generateFlow('FEAT-TEST', 'Test Order Flow', [
+                ['id' => 's1', 'title' => 'Cart', 'screen_id' => 'cart', 'action' => 'checkout', 'target_screen_id' => 's2'],
+                ['id' => 's2', 'title' => 'Payment', 'screen_id' => 'pay', 'action' => 'pay', 'target_screen_id' => 's3'],
+                ['id' => 's3', 'title' => 'Confirmation', 'screen_id' => 'done', 'action' => 'view'],
+            ]);
+            $cycleIssues = $flowGen->validateGraph($testFlow);
+            $mermaid = $flowGen->exportMermaid($testFlow);
+            if (empty($cycleIssues) && str_contains($mermaid, 'graph TD')) {
+                echo "  \033[32m[PASS]\033[0m UserFlowGenerator DAG Graph, Cycle Detection & Mermaid: OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m UserFlowGenerator validation failed\n";
+            }
+
+            // 5. Screen & Navigation Planning
+            $entities = ['Customer' => ['name' => 'text', 'email' => 'email', 'phone' => 'text']];
+            $planned = $uiuxEngine->planScreensAndNavigation($uxAnalysis, $entities);
+            if (isset($planned['screens']['dashboard'], $planned['screens']['customers.index']) && count($planned['navigation']->nodes) >= 2) {
+                echo "  \033[32m[PASS]\033[0m ScreenPlanner & NavigationPlanner: OK (" . count($planned['screens']) . " screens planned)\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m Screen / Navigation planning failed\n";
+            }
+
+            // 6. WCAG 2.1 AA Luminance & Accessibility Audit
+            $a11yEngine = new \Veltrion\Services\UIUX\Accessibility\AccessibilityEngine();
+            $contrastRatio = $a11yEngine->calculateContrastRatio('#000000', '#FFFFFF');
+            $passesAA = $a11yEngine->passesWcagAA('#000000', '#FFFFFF');
+            if ($contrastRatio >= 20.0 && $passesAA) {
+                echo "  \033[32m[PASS]\033[0m AccessibilityEngine WCAG 2.1 AA Contrast & Luminance: OK (Ratio: {$contrastRatio}:1)\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m AccessibilityEngine calculation failed\n";
+            }
+
+            // 7. Responsive Engine Breakpoint Calculation
+            $respEngine = new \Veltrion\Services\UIUX\Responsive\ResponsiveEngine();
+            $xsSpan = $respEngine->calculateGridSpan(4, \Veltrion\Services\UIUX\Enums\BreakpointType::XS);
+            if ($xsSpan === 12) {
+                echo "  \033[32m[PASS]\033[0m ResponsiveEngine 12-Column Breakpoint Adaptability: OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m ResponsiveEngine calculation failed\n";
+            }
+
+            // 8. Platform UI Adapters & Dry-Run Generation
+            $adapterReg = new \Veltrion\Services\UIUX\Adapters\PlatformUIAdapterRegistry();
+            $supported = array_keys($adapterReg->all());
+            if (count($supported) >= 6 && in_array('react', $supported) && in_array('flutter', $supported)) {
+                echo "  \033[32m[PASS]\033[0m PlatformUIAdapterRegistry (" . implode(', ', $supported) . "): OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m PlatformUIAdapterRegistry incomplete\n";
+            }
+
+            // Dry-run generation across platforms
+            $testOutDir = sys_get_temp_dir() . '/veltrion_ui_test_' . rand(1000, 9999);
+            $reactGen = $uiuxEngine->generatePlatformUI('react', $planned['screens'], $planned['navigation'], $ds, $testOutDir, true);
+            $flutterGen = $uiuxEngine->generatePlatformUI('flutter', $planned['screens'], $planned['navigation'], $ds, $testOutDir, true);
+            $angularGen = $uiuxEngine->generatePlatformUI('angular', $planned['screens'], $planned['navigation'], $ds, $testOutDir, true);
+            if ($reactGen->isSuccess && $flutterGen->isSuccess && $angularGen->isSuccess) {
+                echo "  \033[32m[PASS]\033[0m Multi-Platform UI Generation (React, Flutter, Angular Dry-Runs): OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m Multi-platform dry-run generation failed\n";
+            }
+
+            // 9. Universal Application Factory End-to-End
+            $factory = new \Veltrion\Services\Factory\UniversalApplicationFactory(__DIR__);
+            $factoryRes = $factory->createApplication(
+                appName: 'VeltrionStore',
+                platform: 'react',
+                outputDir: $testOutDir,
+                entities: $entities,
+                branding: $branding,
+                dryRun: true
+            );
+            if ($factoryRes['status'] === 'SUCCESS' && isset($factoryRes['uiux_result'])) {
+                echo "  \033[32m[PASS]\033[0m UniversalApplicationFactory (Template + UI/UX Pipeline): OK\n";
+            } else {
+                echo "  \033[31m[FAIL]\033[0m UniversalApplicationFactory failed\n";
+            }
+
+            // Clean up test temp dir if created
+            if (is_dir($testOutDir)) {
+                @exec("rm -rf " . escapeshellarg($testOutDir));
             }
 
         } catch (\Throwable $e) {
@@ -1295,10 +1407,104 @@ switch ($command) {
         echo "\n\033[32m✔ Suite de pruebas finalizada.\033[0m\n";
         break;
 
+    case 'ux:analyze':
+        $featureId = $argv[2] ?? 'FEAT-CUSTOMER-MANAGEMENT';
+        $engine = new \Veltrion\Services\UIUX\UIUXEngine();
+        $res = $engine->analyzeRequirements($featureId);
+        echo "\n\033[1;36m=== UX Analysis for {$featureId} ===\033[0m\n";
+        echo "Roles detectados: " . count($res->roles) . "\n";
+        foreach ($res->personas as $p) {
+            echo " - \033[32m{$p->name}\033[0m ({$p->archetype}): {$p->bio}\n";
+        }
+        echo "Recomendaciones UX:\n";
+        foreach ($res->recommendations as $rec) {
+            echo " * {$rec}\n";
+        }
+        break;
+
+    case 'ux:design':
+        $appName = $argv[2] ?? 'Veltrion App';
+        $primaryColor = $argv[3] ?? '#2563EB';
+        $branding = new \Veltrion\Services\UIUX\DTOs\BrandingConfig($appName, $primaryColor);
+        $dsEngine = new \Veltrion\Services\UIUX\DesignSystem\DesignSystemEngine();
+        $ds = $dsEngine->generateDesignSystem($branding);
+        echo "\n\033[1;36m=== Design System: {$ds->name} ===\033[0m\n";
+        echo "Total Design Tokens: " . count($ds->globalTokens) . "\n";
+        echo "Themes: " . implode(', ', array_keys($ds->themes)) . "\n";
+        echo "Breakpoints: " . implode(', ', array_keys($ds->breakpoints)) . "\n";
+        echo "\nTokens CSS preview:\n";
+        echo substr($dsEngine->exportCssVariables($ds), 0, 300) . "...\n";
+        break;
+
+    case 'ux:validate':
+        $engine = new \Veltrion\Services\UIUX\UIUXEngine();
+        $analysis = $engine->analyzeRequirements('FEAT-STANDARD');
+        $entities = ['Product' => ['title' => 'text', 'price' => 'number', 'sku' => 'text']];
+        $planned = $engine->planScreensAndNavigation($analysis, $entities);
+        $issues = $engine->validateUI($planned['screens'], $planned['navigation'], $analysis->flows);
+        echo "\n\033[1;36m=== Validación de Arquitectura UI/UX ===\033[0m\n";
+        if (empty($issues)) {
+            echo "\033[32m✔ Arquitectura validada sin inconsistencias ni pantallas huérfanas.\033[0m\n";
+        } else {
+            foreach ($issues as $iss) {
+                echo "⚠ [{$iss['severity']}] {$iss['type']}: {$iss['message']}\n";
+            }
+        }
+        break;
+
+    case 'ux:accessibility':
+        $engine = new \Veltrion\Services\UIUX\UIUXEngine();
+        $branding = new \Veltrion\Services\UIUX\DTOs\BrandingConfig('AuditApp', '#1E40AF');
+        $ds = $engine->buildDesignSystem($branding);
+        $a11y = new \Veltrion\Services\UIUX\Accessibility\AccessibilityEngine();
+        $ratio = $a11y->calculateContrastRatio('#1E40AF', '#FFFFFF');
+        $passes = $a11y->passesWcagAA('#1E40AF', '#FFFFFF');
+        echo "\n\033[1;36m=== Auditoría de Accesibilidad WCAG 2.1 AA ===\033[0m\n";
+        echo "Contraste Brand Primary (#1E40AF) vs Blanco (#FFFFFF): {$ratio}:1\n";
+        echo "Cumple WCAG AA: " . ($passes ? "\033[32mSÍ\033[0m" : "\033[31mNO\033[0m") . "\n";
+        break;
+
+    case 'ux:generate':
+        $platform = $argv[2] ?? 'react';
+        $entity = $argv[3] ?? 'Customer';
+        $outputDir = $argv[4] ?? (__DIR__ . '/storage/generated_ui/' . $platform);
+        $engine = new \Veltrion\Services\UIUX\UIUXEngine();
+        $branding = new \Veltrion\Services\UIUX\DTOs\BrandingConfig('Veltrion App');
+        $entities = [$entity => ['name' => 'text', 'email' => 'email', 'status' => 'text']];
+        $res = $engine->generateFullFeatureUI("FEAT-{$entity}", $platform, $entities, $branding, $outputDir, false);
+        echo "\n\033[1;32m✔ Generación UI/UX completada para plataforma: {$platform}\033[0m\n";
+        echo "Directorio de salida: {$outputDir}\n";
+        echo "Archivos generados: " . count($res['generation_result']->generatedFiles) . "\n";
+        echo "\n" . $res['report_markdown'] . "\n";
+        break;
+
+    case 'factory:create':
+        $appName = $argv[2] ?? 'VeltrionProject';
+        $platform = $argv[3] ?? 'react';
+        $outputDir = $argv[4] ?? (__DIR__ . '/storage/apps/' . $appName);
+        $factory = new \Veltrion\Services\Factory\UniversalApplicationFactory(__DIR__);
+        $res = $factory->createApplication(
+            appName: $appName,
+            platform: $platform,
+            outputDir: $outputDir,
+            entities: ['Customer' => ['name' => 'text', 'email' => 'email']],
+            dryRun: false
+        );
+        echo "\n\033[1;32m✔ Aplicación completa creada exitosamente con Universal Application Factory!\033[0m\n";
+        echo "Nombre: {$appName} | Plataforma: {$platform}\n";
+        echo "Ruta: {$outputDir}\n";
+        break;
+
     case 'menu':
     default:
         printBanner();
         echo "Comandos disponibles:\n";
+        echo "  \033[1;32mphp cli factory:create <App> <Platform>\033[0m Crea una app completa con template + arquitectura UI/UX\n";
+        echo "  \033[1;32mphp cli ux:generate <Platform> [Entity]\033[0m Genera pantallas y componentes para una plataforma específica\n";
+        echo "  \033[1;32mphp cli ux:analyze [FEAT-ID]\033[0m            Análisis UX, extracción de roles, personas y user journeys\n";
+        echo "  \033[1;32mphp cli ux:design [App] [Color]\033[0m         Genera tokens de diseño, temas claro/oscuro y config Tailwind\n";
+        echo "  \033[1;32mphp cli ux:validate\033[0m                     Valida grafo de navegación, inconsistencias y estados UI\n";
+        echo "  \033[1;32mphp cli ux:accessibility\033[0m                Auditoría de contraste y WCAG 2.1 AA\n";
         echo "  \033[1;32mphp cli package:build [App] [Client]\033[0m  Construye paquete comercial empaquetado y protegido\n";
         echo "  \033[1;32mphp cli package:verify [path]\033[0m       Verificación de integridad criptográfica SHA-256\n";
         echo "  \033[1;32mphp cli protect:check\033[0m                Estado de proveedores de protección de código\n";

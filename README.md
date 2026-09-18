@@ -98,6 +98,31 @@ php cli template:create react DashboardApp
 php cli template:create android MobileApp
 ```
 
+### 🎨 Universal UI/UX Generation Engine & Application Factory
+Genera interfaces de usuario de alta fidelidad, sistemas de diseño, flujos UX (DAG) y aplicaciones completas multi-plataforma:
+
+```bash
+# Crear una aplicación multi-plataforma completa (Template + UI/UX Engine)
+php cli factory:create MyCommerceApp react
+php cli factory:create InventoryMobile flutter
+
+# Generar pantallas, formularios y componentes para una plataforma específica
+php cli ux:generate react Customer
+php cli ux:generate flutter Order
+
+# Análisis de experiencia de usuario, extracción de personas y flujos
+php cli ux:analyze FEAT-PAYMENT-GATEWAY
+
+# Generar tokens de diseño, temas claro/oscuro y variables CSS
+php cli ux:design "Veltrion Dashboard" "#2563EB"
+
+# Validar arquitectura de pantallas, estados UI y descartar navegación huérfana
+php cli ux:validate
+
+# Auditoría de accesibilidad WCAG 2.1 AA (contraste y proporciones de luminancia)
+php cli ux:accessibility
+```
+
 ### ⚙️ CI/CD y Calidad
 ```bash
 # Ejecutar pipeline de CI/CD

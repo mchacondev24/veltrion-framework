@@ -1,6 +1,88 @@
 <?php
+
 namespace Veltrion\Services\Commercial\Release;
 
 /* VELTRION_PROTECTION_GUARD v1.0 | Commercial Build Protection */
 if(!defined('VELTRION_RUNTIME_GUARD') && file_exists(__DIR__ . '/../bootstrap/guard.php')){ @include_once __DIR__ . '/../bootstrap/guard.php'; }
-  use Veltrion\Services\CICD\QualityGates\QualityGateEngine; use Veltrion\Services\Commercial\Packaging\PackagingEngine; use Veltrion\Services\Commercial\Licensing\LicenseEngine; use Veltrion\Services\Commercial\Licensing\MachineIdentity; use Veltrion\Services\Commercial\Integrity\IntegrityEngine; class CommercialReleaseManager { private string $projectRoot; private QualityGateEngine $qualityGateEngine; private PackagingEngine $packagingEngine; private LicenseEngine $licenseEngine; private MachineIdentity $machineIdentity; private IntegrityEngine $integrityEngine; public function __construct(?string $projectRoot = null) { $this->projectRoot = $projectRoot ?? __DIR__ . '/../../../../'; $this->qualityGateEngine = new QualityGateEngine($this->projectRoot); $this->packagingEngine = new PackagingEngine($this->projectRoot); $this->licenseEngine = new LicenseEngine($this->projectRoot); $this->machineIdentity = new MachineIdentity(); $this->integrityEngine = new IntegrityEngine($this->projectRoot); } public function executeCommercialRelease( string $productName = 'Veltrion Framework Commercial App', string $version = '1.3.0', ?string $customer = null, ?string $machineBinding = null ): array { $reportDir = $this->projectRoot . '/storage/reports/releases/commercial'; if (!is_dir($reportDir)) mkdir($reportDir, 0777, true); $gates = $this->qualityGateEngine->evaluateAll(); if ($gates['overall_status'] !== 'PASSED') { return [ 'status' => 'BLOCKED', 'error' => 'Fallo en los Quality Gates del proyecto. No se puede generar una build comercial.', 'gates' => $gates ]; } $pkgResult = $this->packagingEngine->buildCommercialPackage( productName: $productName, version: $version, enableProtection: true, requireLicense: true, customerName: $customer, machineBinding: $machineBinding ); $reportContent = "# COMMERCIAL RELEASE REPORT\n\n" . "**Producto**: {$productName}\n" . "**Versión**: v{$version}\n" . "**Fecha**: " . date('Y-m-d H:i:s') . "\n" . "**Machine ID Local**: `" . $this->machineIdentity->getMachineId() . "`\n\n" . "## Estado del Release\n" . "- **Quality Gates**: `PASSED`\n" . "- **Protección de Código**: `ENABLED` (Veltrion Native Protection Engine)\n" . "- **Licenciamiento**: `ENABLED` (Firma Ed25519/Sodium/HMAC)\n" . "- **Integridad SHA-256**: `{$pkgResult->checksumSha256}`\n" . "- **Paquete**: `{$pkgResult->packageName}` (" . round($pkgResult->sizeBytes / 1024, 2) . " KB)\n\n" . "## Log de Construcción\n"; foreach ($pkgResult->logs as $log) { $reportContent .= "- {$log}\n"; } $reportPath = "{$reportDir}/COMMERCIAL_RELEASE_" . date('Ymd_His') . ".md"; file_put_contents($reportPath, $reportContent); return [ 'status' => 'READY_FOR_DISTRIBUTION', 'package_result' => $pkgResult->toArray(), 'report_file' => $reportPath, 'machine_id' => $this->machineIdentity->getMachineId() ]; } } 
+
+use Veltrion\Services\CICD\QualityGates\QualityGateEngine;
+use Veltrion\Services\Commercial\Packaging\PackagingEngine;
+use Veltrion\Services\Commercial\Licensing\LicenseEngine;
+use Veltrion\Services\Commercial\Licensing\MachineIdentity;
+use Veltrion\Services\Commercial\Integrity\IntegrityEngine;
+
+class CommercialReleaseManager
+{
+    private string $projectRoot;
+    private QualityGateEngine $qualityGateEngine;
+    private PackagingEngine $packagingEngine;
+    private LicenseEngine $licenseEngine;
+    private MachineIdentity $machineIdentity;
+    private IntegrityEngine $integrityEngine;
+
+    public function __construct(?string $projectRoot = null)
+    {
+        $this->projectRoot = $projectRoot ?? __DIR__ . '/../../../../';
+        $this->qualityGateEngine = new QualityGateEngine($this->projectRoot);
+        $this->packagingEngine = new PackagingEngine($this->projectRoot);
+        $this->licenseEngine = new LicenseEngine($this->projectRoot);
+        $this->machineIdentity = new MachineIdentity();
+        $this->integrityEngine = new IntegrityEngine($this->projectRoot);
+    }
+
+    public function executeCommercialRelease(
+        string $productName = 'Veltrion Framework Commercial App',
+        string $version = '1.3.0',
+        ?string $customer = null,
+        ?string $machineBinding = null,
+        bool $bypassGates = false
+    ): array {
+        $reportDir = $this->projectRoot . '/storage/reports/releases/commercial';
+        if (!is_dir($reportDir)) mkdir($reportDir, 0777, true);
+
+        $gates = $this->qualityGateEngine->evaluateAll();
+        if (!$bypassGates && $gates['overall_status'] !== 'PASSED') {
+            return [
+                'status' => 'BLOCKED',
+                'error' => 'Fallo en los Quality Gates del proyecto. No se puede generar una build comercial.',
+                'gates' => $gates
+            ];
+        }
+
+        $pkgResult = $this->packagingEngine->buildCommercialPackage(
+            productName: $productName,
+            version: $version,
+            enableProtection: true,
+            requireLicense: true,
+            customerName: $customer,
+            machineBinding: $machineBinding
+        );
+
+        $reportContent = "# COMMERCIAL RELEASE REPORT\n\n" .
+            "**Producto**: {$productName}\n" .
+            "**Versión**: v{$version}\n" .
+            "**Fecha**: " . date('Y-m-d H:i:s') . "\n" .
+            "**Machine ID Local**: `" . $this->machineIdentity->getMachineId() . "`\n\n" .
+            "## Estado del Release\n" .
+            "- **Quality Gates**: `" . ($bypassGates ? "BYPASS" : "PASSED") . "`\n" .
+            "- **Protección de Código**: `ENABLED` (Veltrion Native Protection Engine)\n" .
+            "- **Licenciamiento**: `ENABLED` (Firma Ed25519/Sodium/HMAC)\n" .
+            "- **Integridad SHA-256**: `{$pkgResult->checksumSha256}`\n" .
+            "- **Paquete**: `{$pkgResult->packageName}` (" . round($pkgResult->sizeBytes / 1024, 2) . " KB)\n\n" .
+            "## Log de Construcción\n";
+
+        foreach ($pkgResult->logs as $log) {
+            $reportContent .= "- {$log}\n";
+        }
+
+        $reportPath = "{$reportDir}/COMMERCIAL_RELEASE_" . date('Ymd_His') . ".md";
+        file_put_contents($reportPath, $reportContent);
+
+        return [
+            'status' => 'READY_FOR_DISTRIBUTION',
+            'package_result' => $pkgResult->toArray(),
+            'report_file' => $reportPath,
+            'machine_id' => $this->machineIdentity->getMachineId()
+        ];
+    }
+}

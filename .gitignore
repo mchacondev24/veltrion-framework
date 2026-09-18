@@ -16,8 +16,12 @@ storage/builds/*
 !storage/builds/.gitkeep
 storage/reports/*
 !storage/reports/.gitkeep
+storage/artifacts/
+storage/cache/
+storage/test_protected/
 storage/*.sqlite
 storage/*.sqlite-journal
+app/storage/
 *.log
 
 # Python Cache
